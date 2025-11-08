@@ -170,7 +170,7 @@ setTimeout(() => {
 
 The options object also allows you to control the behavior of the event queue:
 
-*   `maxQueue: number` (default: `1000`)
+*   `maxQueue: number` (default: `100`)
     The maximum number of events to hold in the queue. If the queue is full and a new event arrives, the oldest event is dropped. This prevents memory leaks in scenarios with high event throughput.
 
 *   `latestOnly: boolean` (default: `false`)
