@@ -254,4 +254,41 @@ describe('Coverage-specific tests', () => {
     expect(events[2]?.data).toBe(ESC_EVENT_1);
     expect(events[3]?.data).toBe(SGR_EVENT_1);
   });
+
+  test('should handle unknown SGR wheel codes', () => {
+    // Test wheel codes that are not in the expected range (64-67)
+    // This should hit line 44 in decodeSGRButton: button = 'unknown'
+    const events = [...parseMouseEvents('\x1b[<200;10;20M')]; // wheel code 200 (unknown)
+    expect(events[0]?.button).toBe('unknown');
+    expect(events[0]?.action).toBe('press'); // unknown buttons default to press
+  });
+
+  test('should handle unknown ESC wheel codes', () => {
+    // Test ESC wheel codes that are not in expected range (64-67)
+    // Need to construct ESC sequence with code that has bit 64 set but not 64-67
+    // ESC format: \x1b[M<cb><cx><cy> where cb = button code + 32
+    // For wheel code 68: cb = 68 + 32 = 100, char 'd'
+    const events = [...parseMouseEvents('\x1b[MdSJ')]; // 'd'.charCodeAt(0) - 32 = 68 (unknown wheel)
+    expect(events[0]?.button).toBe('unknown');
+    expect(events[0]?.action).toBe('press'); // unknown buttons default to press, not wheel
+  });
+
+  test('should handle NaN values in SGR coordinates', () => {
+    // Test malformed SGR sequences with non-numeric coordinates
+    // This should hit line 134: return [null, start + 1]
+    const events = [...parseMouseEvents('\x1b[<0;abc;20M')];
+    expect(events.length).toBe(0); // Should return empty due to NaN parsing
+  });
+
+  test('should handle NaN values in SGR button code', () => {
+    // Test malformed SGR sequences with non-numeric button code
+    const events = [...parseMouseEvents('\x1b[<abc;10;20M')];
+    expect(events.length).toBe(0); // Should return empty due to NaN parsing
+  });
+
+  test('should handle NaN values in SGR y coordinate', () => {
+    // Test malformed SGR sequences with non-numeric y coordinate
+    const events = [...parseMouseEvents('\x1b[<0;10;xyzM')];
+    expect(events.length).toBe(0); // Should return empty due to NaN parsing
+  });
 });

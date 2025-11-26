@@ -61,7 +61,7 @@ function decodeSGRButton(code: number): { button: ButtonType; action: MouseEvent
 function decodeESCButton(code: number): { button: ButtonType; action: MouseEventAction } {
   const motion = !!(code & 32);
 
-  let button: ButtonType;
+  let button: ButtonType = 'unknown'; // Initialize with fallback value
   if (code & 64) {
     // Wheel event
     switch (code) {
@@ -95,9 +95,6 @@ function decodeESCButton(code: number): { button: ButtonType; action: MouseEvent
         break;
       case 3:
         button = 'none';
-        break;
-      default:
-        button = 'unknown';
         break;
     }
   }
