@@ -277,7 +277,7 @@ class Mouse {
     let rejectNext: ((err: Error) => void) | null = null;
 
     const handlers = new Map<MouseEventAction, (ev: MouseEvent) => void>();
-    const allEvents: MouseEventAction[] = ['press', 'release', 'drag', 'wheel', 'move'];
+    const allEvents: MouseEventAction[] = ['press', 'release', 'drag', 'wheel', 'move', 'click'];
 
     allEvents.forEach((type) => {
       const handler = (ev: MouseEvent): void => {
