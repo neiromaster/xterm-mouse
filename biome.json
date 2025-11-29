@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.2/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.3.7/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -10,25 +10,112 @@
   },
   "formatter": {
     "enabled": true,
-    "indentStyle": "space"
+    "indentStyle": "space",
+    "lineEnding": "lf"
   },
   "linter": {
     "enabled": true,
     "rules": {
       "recommended": true
-    }
+    },
+    "includes": [
+      "**",
+      "!dist/**"
+    ]
   },
   "javascript": {
     "formatter": {
+      "lineWidth": 120,
       "quoteStyle": "single",
-      "lineWidth": 120
+      "trailingCommas": "all",
+      "semicolons": "always",
+      "bracketSameLine": false
     }
   },
+  "json": {
+    "formatter": {
+      "lineWidth": 10
+    }
+  },
+  "overrides": [
+    {
+      "includes": [
+        "**/*.test.{ts,tsx,mts,cts}",
+        "**/*.spec.{ts,tsx,mts,cts}"
+      ],
+      "linter": {
+        "rules": {
+          "security": {
+            "noSecrets": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**/*.{ts,tsx,mts,cts}",
+        "!**/*.test.{ts,tsx,mts,cts}",
+        "!**/*.spec.{ts,tsx,mts,cts}"
+      ],
+      "linter": {
+        "domains": {
+          "project": "recommended",
+          "react": "recommended"
+        },
+        "rules": {
+          "correctness": {
+            "noChildrenProp": "error",
+            "useJsxKeyInIterable": "error",
+            "useExhaustiveDependencies": "warn",
+            "noUnusedVariables": "warn",
+            "useHookAtTopLevel": "error",
+            "noNestedComponentDefinitions": "error",
+            "noReactPropAssignments": "error"
+          },
+          "nursery": {
+            "noUnknownAttribute": "error",
+            "noImportCycles": "error",
+            "useExplicitType": "error",
+            "useSpread": "error",
+            "noFloatingPromises": "error",
+            "noMisusedPromises": "error",
+            "noUnresolvedImports": "error"
+          },
+          "security": {
+            "noDangerouslySetInnerHtmlWithChildren": "error",
+            "noDangerouslySetInnerHtml": "error",
+            "noSecrets": "error"
+          },
+          "suspicious": {
+            "noVar": "error"
+          },
+          "style": {
+            "useConsistentCurlyBraces": "error",
+            "noEnum": "error",
+            "noNamespace": "error",
+            "noParameterAssign": "error",
+            "useConsistentTypeDefinitions": {
+              "level": "error",
+              "options": {
+                "style": "type"
+              }
+            },
+            "useConsistentArrayType": "error",
+            "useAtIndex": "error"
+          },
+          "performance": {
+            "noAwaitInLoops": "warn"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
-    "enabled": false,
+    "enabled": true,
     "actions": {
       "source": {
-        "organizeImports": "on"
+        "organizeImports": "on",
+        "useSortedProperties": "on"
       }
     }
   }

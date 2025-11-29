@@ -1,4 +1,4 @@
-import type { ButtonType, SGRMouseEvent, ESCMouseEvent, MouseEventAction } from '../types';
+import type { ButtonType, ESCMouseEvent, MouseEventAction, SGRMouseEvent } from '../types';
 
 import { ANSI_RESPONSE_PATTERNS } from './constants.ts';
 

@@ -1,6 +1,5 @@
+import { expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
-
-import { expect, test, mock } from 'bun:test';
 
 import type { ReadableStreamWithEncoding } from '../types';
 

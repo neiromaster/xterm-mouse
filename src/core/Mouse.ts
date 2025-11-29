@@ -1,7 +1,6 @@
 import { EventEmitter } from 'node:events';
-
-import { ANSI_CODES } from '../parser/constants';
 import { parseMouseEvents } from '../parser/ansiParser';
+import { ANSI_CODES } from '../parser/constants';
 import { MouseError, type MouseEvent, type MouseEventAction, type ReadableStreamWithEncoding } from '../types';
 
 /**
@@ -235,6 +234,7 @@ class Mouse {
           latest = null;
           yield ev;
         } else {
+          // biome-ignore lint/performance/noAwaitInLoops: This is an async generator, await in loop is necessary
           yield await new Promise<MouseEvent>((resolve, reject) => {
             resolveNext = resolve;
             rejectNext = reject;
@@ -344,6 +344,7 @@ class Mouse {
           latest = null;
           yield ev;
         } else {
+          // biome-ignore lint/performance/noAwaitInLoops: This is an async generator, await in loop is necessary
           yield await new Promise<{ type: MouseEventAction; event: MouseEvent }>((resolve, reject) => {
             resolveNext = resolve;
             rejectNext = reject;

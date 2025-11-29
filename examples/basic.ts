@@ -1,6 +1,6 @@
 import { Mouse, MouseError } from '../src';
 
-const mouse = new Mouse();
+const mouse: Mouse = new Mouse();
 
 console.log("Enabling mouse tracking... Press 'q' to exit.");
 

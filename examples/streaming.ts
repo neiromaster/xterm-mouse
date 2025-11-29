@@ -1,6 +1,6 @@
 import { Mouse, MouseError } from '../src';
 
-const mouse = new Mouse();
+const mouse: Mouse = new Mouse();
 
 const main = async (): Promise<void> => {
   console.log('Enable mouse events...');
