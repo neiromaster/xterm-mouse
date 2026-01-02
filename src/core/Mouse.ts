@@ -55,8 +55,43 @@ class Mouse {
 
   /**
    * Enables mouse event tracking.
-   * This method puts the input stream into raw mode and starts listening for data.
-   * It will throw an error if the input stream is not a TTY.
+   *
+   * This method activates mouse event capture by putting the input stream into raw mode
+   * and sending the appropriate ANSI escape sequences to enable mouse tracking in the terminal.
+   *
+   * **TTY Requirement:** This method requires the input stream to be a TTY (terminal).
+   * Mouse events cannot be captured when the input is piped, redirected, or running in a
+   * non-interactive environment. Check `process.stdin.isTTY` before calling this method.
+   *
+   * **Error Handling:** This method throws a `MouseError` if:
+   * - The input stream is not a TTY (interactive terminal)
+   * - The stream cannot be put into raw mode
+   * - The terminal does not support the mouse tracking ANSI codes
+   *
+   * **Side Effects:**
+   * - The input stream is switched to raw mode (character-by-character input)
+   * - The input encoding is set to UTF-8
+   * - The input stream is resumed if paused
+   * - ANSI escape codes are written to the output stream to enable mouse tracking
+   * - The original stream settings are preserved for restoration on `disable()`
+   *
+   * @throws {Error} If the input stream is not a TTY
+   * @throws {MouseError} If enabling mouse tracking fails
+   * @see {@link disable} to disable tracking and restore the stream
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   *
+   * if (process.stdin.isTTY) {
+   *   mouse.enable();
+   *   mouse.on('press', (event) => {
+   *     console.log(`Pressed at ${event.x}, ${event.y}`);
+   *   });
+   * } else {
+   *   console.error('Mouse tracking requires a TTY');
+   * }
+   * ```
    */
   public enable = (): void => {
     if (this.enabled) {
@@ -93,6 +128,7 @@ class Mouse {
   /**
    * Disables mouse event tracking.
    * This method restores the input stream to its previous state and stops listening for data.
+   * @see {@link enable} to enable tracking and capture mouse events
    */
   public disable = (): void => {
     if (!this.enabled) {
@@ -131,6 +167,7 @@ class Mouse {
    * @param event The name of the event to listen for.
    * @param listener The callback function to execute when the event is triggered.
    * @returns The event emitter instance.
+   * @see {@link off} to remove the listener
    */
   public on = (event: MouseEventAction | 'error', listener: (event: MouseEvent) => void): EventEmitter => {
     return this.emitter.on(event, listener);
@@ -148,12 +185,107 @@ class Mouse {
 
   /**
    * Returns an async generator that yields mouse events of a specific type.
-   * @param type The type of mouse event to listen for.
+   *
+   * This method provides a convenient way to iterate over mouse events using async/await syntax.
+   * The async generator will yield events as they occur, allowing for clean and readable event handling code.
+   *
+   * **Cancellation with AbortSignal:** The async generator supports cancellation through the `signal` option.
+   * When the provided AbortSignal is aborted, the generator will throw a `MouseError` and clean up all listeners.
+   * This is particularly useful for implementing timeout functionality or user-initiated cancellation.
+   *
+   * **Queue Management:**
+   * - By default, events are queued up to `maxQueue` (default: 100, max: 1000)
+   * - When `latestOnly` is true, only the most recent event is buffered, dropping intermediate events
+   * - This is useful for high-frequency events like 'move' where you only care about the latest position
+   *
+   * **Error Handling:** Errors from the mouse event stream will be thrown from the generator,
+   * allowing for try/catch error handling in the iteration loop.
+   *
+   * **Cleanup:** The generator automatically cleans up event listeners when:
+   * - The iteration loop completes (breaks or returns)
+   * - An error is thrown
+   * - The abort signal is triggered
+   *
+   * @param type The type of mouse event to listen for (e.g., 'press', 'drag', 'wheel').
    * @param options Configuration for the event stream.
    * @param options.latestOnly If true, only the latest event is buffered. Defaults to false.
    * @param options.maxQueue The maximum number of events to queue. Defaults to 100, with a maximum of 1000.
-   * @param options.signal An AbortSignal to cancel the async generator.
-   * @yields {MouseEvent} A mouse event object.
+   * @param options.signal An AbortSignal to cancel the async generator and clean up resources.
+   * @yields {MouseEvent} A mouse event object containing x, y, button, and action properties.
+   * @throws {MouseError} When the abort signal is triggered or a mouse event stream error occurs.
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Collect 5 mouse clicks
+   * const clicks: MouseEvent[] = [];
+   * for await (const event of mouse.eventsOf('click')) {
+   *   clicks.push(event);
+   *   console.log(`Click at ${event.x}, ${event.y}`);
+   *   if (clicks.length >= 5) break;
+   * }
+   * mouse.disable();
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Track mouse movement with cancellation after 5 seconds
+   * const controller = new AbortController();
+   * setTimeout(() => controller.abort(), 5000);
+   *
+   * try {
+   *   for await (const event of mouse.eventsOf('move', { signal: controller.signal })) {
+   *     console.log(`Mouse moved to ${event.x}, ${event.y}`);
+   *   }
+   * } catch (err) {
+   *   if (err instanceof MouseError && err.message.includes('aborted')) {
+   *     console.log('Tracking stopped after timeout');
+   *   } else {
+   *     throw err;
+   *   }
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Track only the latest mouse position (for high-frequency events)
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Display cursor position updates
+   * for await (const event of mouse.eventsOf('move', { latestOnly: true })) {
+   *   // Clear line and show position
+   *   process.stdout.write(`\r\x1b[KPosition: ${event.x}, ${event.y}`);
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Implement drag detection with user cancellation
+   * const controller = new AbortController();
+   *
+   * // Listen for Ctrl+C to cancel
+   * process.stdin.setRawMode(true);
+   * process.stdin.on('data', (key) => {
+   *   if (key[0] === 3) { // Ctrl+C
+   *     controller.abort();
+   *   }
+   * });
+   *
+   * try {
+   *   for await (const event of mouse.eventsOf('drag', { signal: controller.signal })) {
+   *     console.log(`Dragging at ${event.x}, ${event.y} with button ${event.button}`);
+   *   }
+   * } catch (err) {
+   *   if (err instanceof MouseError && err.message.includes('aborted')) {
+   *     console.log('\nDrag tracking cancelled by user');
+   *   }
+   * } finally {
+   *   mouse.disable();
+   * }
+   * ```
    */
   public async *eventsOf(
     type: MouseEventAction,

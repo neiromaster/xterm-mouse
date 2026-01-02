@@ -2,6 +2,11 @@ import type { ButtonType, ESCMouseEvent, MouseEventAction, SGRMouseEvent } from 
 
 import { ANSI_RESPONSE_PATTERNS } from './constants.ts';
 
+/**
+ * Decodes the SGR (SGR-Style) mouse button code into button type and action.
+ * @param code The raw button code from the SGR mouse event.
+ * @returns An object containing the button type and the action performed.
+ */
 function decodeSGRButton(code: number): { button: ButtonType; action: MouseEventAction } {
   const motion = !!(code & 32);
   // Modifier bits for shift, alt, ctrl, and motion
@@ -58,6 +63,11 @@ function decodeSGRButton(code: number): { button: ButtonType; action: MouseEvent
   return { button, action };
 }
 
+/**
+ * Decodes the ESC (legacy escape sequence) mouse button code into button type and action.
+ * @param code The raw button code from the ESC mouse event.
+ * @returns An object containing the button type and the action performed.
+ */
 function decodeESCButton(code: number): { button: ButtonType; action: MouseEventAction } {
   const motion = !!(code & 32);
 
@@ -113,6 +123,12 @@ function decodeESCButton(code: number): { button: ButtonType; action: MouseEvent
   return { button, action };
 }
 
+/**
+ * Parses a single SGR (SGR-Style) mouse event from a string starting at the given position.
+ * @param data The string containing the raw mouse event data.
+ * @param start The position in the string to start parsing from.
+ * @returns A tuple containing the parsed mouse event (or null if parsing fails) and the position to continue parsing from.
+ */
 function parseSGRMouseEvent(data: string, start: number): [SGRMouseEvent | null, number] {
   const match = data.substring(start).match(ANSI_RESPONSE_PATTERNS.sgrPattern);
 
@@ -149,6 +165,12 @@ function parseSGRMouseEvent(data: string, start: number): [SGRMouseEvent | null,
   return [event, start + fullMatch.length];
 }
 
+/**
+ * Parses a single ESC (legacy escape sequence) mouse event from a string starting at the given position.
+ * @param data The string containing the raw mouse event data.
+ * @param start The position in the string to start parsing from.
+ * @returns A tuple containing the parsed mouse event (or null if parsing fails) and the position to continue parsing from.
+ */
 function parseESCMouseEvent(data: string, start: number): [ESCMouseEvent | null, number] {
   const match = data.substring(start).match(ANSI_RESPONSE_PATTERNS.escPattern);
 
@@ -180,6 +202,11 @@ function parseESCMouseEvent(data: string, start: number): [ESCMouseEvent | null,
   return [event, start + fullMatch.length];
 }
 
+/**
+ * Parses mouse events from raw ANSI escape sequence data.
+ * @param data The raw string data containing ANSI mouse event escape sequences.
+ * @yields {SGRMouseEvent | ESCMouseEvent} A parsed mouse event object.
+ */
 function* parseMouseEvents(data: string): Generator<SGRMouseEvent | ESCMouseEvent> {
   let i = 0;
   let lastEventData: string | null = null;

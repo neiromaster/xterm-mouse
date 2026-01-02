@@ -176,6 +176,71 @@ The options object also allows you to control the behavior of the event queue:
 *   `latestOnly: boolean` (default: `false`)
     If set to `true`, the queue will only store the most recent event, discarding any previous ones. This is useful when you only care about the latest state (e.g., for mouse position) and not the intermediate events.
 
+## Troubleshooting
+
+### Mouse events not working
+
+If mouse events are not being captured:
+
+*   **Check terminal compatibility**: Ensure your terminal supports xterm mouse tracking. Most modern terminals (iTerm2, GNOME Terminal, Windows Terminal, etc.) support this feature, but it may need to be enabled in terminal settings.
+
+*   **Verify stdin is in raw mode**: The library automatically sets stdin to raw mode when `enable()` is called. If you're manually manipulating stdin, it may interfere with mouse event capture.
+
+*   **Check for conflicting libraries**: Other terminal manipulation libraries (e.g., readline, prompt libraries) may interfere with mouse tracking. Try disabling them to see if mouse events start working.
+
+### Coordinate limitations
+
+If you're experiencing coordinate issues (e.g., coordinates never exceed 95):
+
+*   **ESC protocol limitation**: Your terminal may not support SGR mode. The older ESC protocol limits coordinates to 223 (0-indexed: 222), but some terminals may have further restrictions.
+
+*   **Terminal window size**: Coordinates are relative to the terminal window size. Ensure you're testing in a terminal with sufficient size.
+
+### Events not firing
+
+If event listeners are not being triggered:
+
+*   **Verify enable() was called**: Make sure you've called `mouse.enable()` before attempting to capture mouse events.
+
+*   **Check event type**: Ensure you're listening for the correct event type. See the [Mouse Events](#mouse-events) section for available event types.
+
+*   **Process stdin**: Ensure `process.stdin` is not being paused or redirected. The library relies on stdin to receive mouse events.
+
+### Cleanup issues
+
+If you're experiencing issues with mouse tracking not disabling properly:
+
+*   **Always call disable()**: Ensure you're calling `mouse.disable()` before your program exits. This restores the terminal to its original state.
+
+*   **Handle process exit**: Register an exit handler to ensure cleanup:
+
+```typescript
+process.on('exit', () => {
+  mouse.disable();
+});
+
+process.on('SIGINT', () => {
+  mouse.disable();
+  process.exit();
+});
+```
+
+### No wheel events
+
+If mouse wheel events are not being captured:
+
+*   **Terminal support**: Some terminals may not support wheel events in the default mode. The library attempts to enable wheel tracking, but terminal limitations may prevent this.
+
+*   **Scrolling vs wheel**: Wheel events are distinct from terminal scrolling. Ensure you're actually using the mouse wheel, not the terminal's scrollback feature.
+
+### Coordinate offset issues
+
+If mouse coordinates appear offset or incorrect:
+
+*   **Terminal padding**: Some terminals have padding or margins that can affect coordinate calculation. This is a terminal-specific behavior.
+
+*   **Multi-line prompts**: If your application has multi-line output before the mouse interaction area, coordinates will be relative to the entire terminal buffer, not your application's visible area.
+
 ## For Developers
 
 ### Project Status

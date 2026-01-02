@@ -1,3 +1,7 @@
+/**
+ * ANSI escape codes for enabling and disabling different mouse tracking modes in terminals.
+ * These codes are used to control how the terminal reports mouse events.
+ */
 const ANSI_CODES = {
   // Terminal will send event on button pressed with mouse position
   // SET_VT200_MOUSE
@@ -16,6 +20,10 @@ const ANSI_CODES = {
   mouseSGR: { on: '\x1b[?1006h', off: '\x1b[?1006l' },
 };
 
+/**
+ * Regular expression patterns for parsing ANSI escape sequences that contain mouse event data.
+ * These patterns match the different formats terminals use to report mouse positions and button states.
+ */
 const ANSI_RESPONSE_PATTERNS = {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: need for mouse events
   sgrPattern: /\x1b\[<(\d+);(\d+);(\d+)([Mm])/,
