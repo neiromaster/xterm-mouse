@@ -36,3 +36,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # VSCode based IDEs
 .vscode
+
+.auto-claude/
+.claude_settings.json
