@@ -660,3 +660,498 @@ test('Mouse.stream() should be cancellable with AbortSignal', async () => {
     mouse.destroy();
   }
 });
+
+test('Mouse default threshold should emit click when press and release at same position', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const releaseEvent = '\x1b[<0;10;20m';
+
+  const eventPromise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      // Assert
+      expect(event.action).toBe('click');
+      expect(event.button).toBe('left');
+      expect(event.x).toBe(10);
+      expect(event.y).toBe(20);
+      resolve();
+    });
+  });
+
+  // Act
+  mouse.enable();
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  await eventPromise;
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse default threshold should emit click when distance is exactly 1 cell', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const releaseEvent = '\x1b[<0;11;21m'; // xDiff=1, yDiff=1 (at threshold boundary)
+
+  const eventPromise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      // Assert
+      expect(event.action).toBe('click');
+      expect(event.button).toBe('left');
+      expect(event.x).toBe(11);
+      expect(event.y).toBe(21);
+      resolve();
+    });
+  });
+
+  // Act
+  mouse.enable();
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  await eventPromise;
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse default threshold should not emit click when distance exceeds 1 cell', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const releaseEvent = '\x1b[<0;12;22m'; // xDiff=2, yDiff=2 (beyond threshold)
+
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  // Act
+  mouse.enable();
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse default threshold should not emit click when only X distance exceeds 1', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const releaseEvent = '\x1b[<0;12;20m'; // xDiff=2, yDiff=0 (X exceeds threshold)
+
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  // Act
+  mouse.enable();
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse default threshold should not emit click when only Y distance exceeds 1', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const releaseEvent = '\x1b[<0;10;22m'; // xDiff=0, yDiff=2 (Y exceeds threshold)
+
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  // Act
+  mouse.enable();
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse default threshold should maintain backward compatibility with hardcoded behavior', async () => {
+  // Arrange - This test verifies that the default threshold of 1
+  // maintains the same behavior as the previous hardcoded implementation
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+
+  // Test case 1: Same position (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(10);
+      expect(event.y).toBe(20);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release at (10,20)
+  await click1Promise;
+
+  // Test case 2: Distance of 1 in both directions (should click)
+  const click2Promise = new Promise<void>((resolve) => {
+    const handler = (event: unknown) => {
+      mouse.off('click', handler);
+      expect(event).toBeDefined();
+      resolve();
+    };
+    mouse.on('click', handler);
+  });
+
+  stream.emit('data', Buffer.from('\x1b[<0;30;40M')); // press at (30,40)
+  stream.emit('data', Buffer.from('\x1b[<0;31;41m')); // release at (31,41) - distance of 1
+  await click2Promise;
+
+  // Test case 3: Distance > 1 (should not click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;50;60M')); // press at (50,60)
+  stream.emit('data', Buffer.from('\x1b[<0;53;63m')); // release at (53,63) - distance of 3
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 0 should only emit click when press and release at exact same position', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 0 });
+
+  // Act & Assert - Test exact position (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(10);
+      expect(event.y).toBe(20);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release at (10,20) - exact same position
+  await click1Promise;
+
+  // Act & Assert - Test position with distance of 1 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;30;40M')); // press at (30,40)
+  stream.emit('data', Buffer.from('\x1b[<0;31;41m')); // release at (31,41) - xDiff=1, yDiff=1
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 2 should emit click when distance is within 2 cells', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 2 });
+
+  // Act & Assert - Test distance of 2 (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(12);
+      expect(event.y).toBe(22);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;12;22m')); // release at (12,22) - xDiff=2, yDiff=2
+  await click1Promise;
+
+  // Act & Assert - Test distance of 3 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;50;60M')); // press at (50,60)
+  stream.emit('data', Buffer.from('\x1b[<0;53;63m')); // release at (53,63) - xDiff=3, yDiff=3
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 5 should emit click when distance is within 5 cells', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 5 });
+
+  // Act & Assert - Test distance of 5 (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(15);
+      expect(event.y).toBe(25);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;15;25m')); // release at (15,25) - xDiff=5, yDiff=5
+  await click1Promise;
+
+  // Act & Assert - Test distance of 6 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;50;60M')); // press at (50,60)
+  stream.emit('data', Buffer.from('\x1b[<0;56;66m')); // release at (56,66) - xDiff=6, yDiff=6
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 10 should emit click when distance is within 10 cells', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 10 });
+
+  // Act & Assert - Test distance of 10 (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(20);
+      expect(event.y).toBe(30);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;20;30m')); // release at (20,30) - xDiff=10, yDiff=10
+  await click1Promise;
+
+  // Act & Assert - Test distance of 11 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;50;60M')); // press at (50,60)
+  stream.emit('data', Buffer.from('\x1b[<0;61;71m')); // release at (61,71) - xDiff=11, yDiff=11
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 0 should require exact same position - all edge cases', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 0 });
+
+  mouse.enable();
+
+  // Act & Assert - Test 1: Exact same position (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    const handler = (event: unknown) => {
+      mouse.off('click', handler);
+      expect(event).toBeDefined();
+      resolve();
+    };
+    mouse.on('click', handler);
+  });
+
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release at (10,20) - exact same position
+  await click1Promise;
+
+  // Act & Assert - Test 2: X differs by 1, Y is same (should NOT click)
+  const clickSpy1 = mock(() => {});
+  mouse.on('click', clickSpy1);
+
+  stream.emit('data', Buffer.from('\x1b[<0;30;40M')); // press at (30,40)
+  stream.emit('data', Buffer.from('\x1b[<0;31;40m')); // release at (31,40) - xDiff=1, yDiff=0
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy1).not.toHaveBeenCalled();
+
+  // Act & Assert - Test 3: Y differs by 1, X is same (should NOT click)
+  const clickSpy2 = mock(() => {});
+  mouse.on('click', clickSpy2);
+
+  stream.emit('data', Buffer.from('\x1b[<0;50;60M')); // press at (50,60)
+  stream.emit('data', Buffer.from('\x1b[<0;50;61m')); // release at (50,61) - xDiff=0, yDiff=1
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy2).not.toHaveBeenCalled();
+
+  // Act & Assert - Test 4: Both X and Y differ by 1 (should NOT click)
+  const clickSpy3 = mock(() => {});
+  mouse.on('click', clickSpy3);
+
+  stream.emit('data', Buffer.from('\x1b[<0;70;80M')); // press at (70,80)
+  stream.emit('data', Buffer.from('\x1b[<0;71;81m')); // release at (71,81) - xDiff=1, yDiff=1
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy3).not.toHaveBeenCalled();
+
+  // Act & Assert - Test 5: X differs by more, Y is same (should NOT click)
+  const clickSpy4 = mock(() => {});
+  mouse.on('click', clickSpy4);
+
+  stream.emit('data', Buffer.from('\x1b[<0;90;100M')); // press at (90,100)
+  stream.emit('data', Buffer.from('\x1b[<0;95;100m')); // release at (95,100) - xDiff=5, yDiff=0
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy4).not.toHaveBeenCalled();
+
+  // Act & Assert - Test 6: Y differs by more, X is same (should NOT click)
+  const clickSpy5 = mock(() => {});
+  mouse.on('click', clickSpy5);
+
+  stream.emit('data', Buffer.from('\x1b[<0;110;120M')); // press at (110,120)
+  stream.emit('data', Buffer.from('\x1b[<0;110;125m')); // release at (110,125) - xDiff=0, yDiff=5
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy5).not.toHaveBeenCalled();
+
+  // Act & Assert - Test 7: Verify exact position works again at different coordinates
+  const click2Promise = new Promise<void>((resolve) => {
+    const handler = (event: unknown) => {
+      mouse.off('click', handler);
+      expect(event).toBeDefined();
+      resolve();
+    };
+    mouse.on('click', handler);
+  });
+
+  stream.emit('data', Buffer.from('\x1b[<0;200;300M')); // press at (200,300)
+  stream.emit('data', Buffer.from('\x1b[<0;200;300m')); // release at (200,300) - exact same position
+  await click2Promise;
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 50 should emit click when distance is within 50 cells', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 50 });
+
+  // Act & Assert - Test distance of 50 (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(60);
+      expect(event.y).toBe(70);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;60;70m')); // release at (60,70) - xDiff=50, yDiff=50
+  await click1Promise;
+
+  // Act & Assert - Test distance of 51 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;100;200M')); // press at (100,200)
+  stream.emit('data', Buffer.from('\x1b[<0;151;251m')); // release at (151,251) - xDiff=51, yDiff=51
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 100 should emit click when distance is within 100 cells', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 100 });
+
+  // Act & Assert - Test distance of 100 (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(110);
+      expect(event.y).toBe(120);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;110;120m')); // release at (110,120) - xDiff=100, yDiff=100
+  await click1Promise;
+
+  // Act & Assert - Test distance of 101 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;200;300M')); // press at (200,300)
+  stream.emit('data', Buffer.from('\x1b[<0;301;401m')); // release at (301,401) - xDiff=101, yDiff=101
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse with threshold 500 should emit click when distance is within 500 cells', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream, undefined, undefined, { clickDistanceThreshold: 500 });
+
+  // Act & Assert - Test distance of 500 (should click)
+  const click1Promise = new Promise<void>((resolve) => {
+    mouse.on('click', (event) => {
+      expect(event.x).toBe(510);
+      expect(event.y).toBe(520);
+      resolve();
+    });
+  });
+
+  mouse.enable();
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press at (10,20)
+  stream.emit('data', Buffer.from('\x1b[<0;510;520m')); // release at (510,520) - xDiff=500, yDiff=500
+  await click1Promise;
+
+  // Act & Assert - Test distance of 501 (should NOT click)
+  const clickSpy = mock(() => {});
+  mouse.on('click', clickSpy);
+
+  stream.emit('data', Buffer.from('\x1b[<0;1000;2000M')); // press at (1000,2000)
+  stream.emit('data', Buffer.from('\x1b[<0;1501;2501m')); // release at (1501,2501) - xDiff=501, yDiff=501
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});

@@ -176,6 +176,56 @@ The options object also allows you to control the behavior of the event queue:
 *   `latestOnly: boolean` (default: `false`)
     If set to `true`, the queue will only store the most recent event, discarding any previous ones. This is useful when you only care about the latest state (e.g., for mouse position) and not the intermediate events.
 
+### Configuring Click Detection
+
+By default, a click is detected when the mouse button press and release occur within 1 cell in both the X and Y directions. You can customize this behavior using the `clickDistanceThreshold` option.
+
+#### Default Behavior
+
+The default threshold of 1 allows for slight movement between press and release:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse(); // Uses default threshold of 1
+```
+
+#### Strict Click Detection
+
+For applications that require precise clicks, set the threshold to 0 to require the press and release to occur at the exact same position:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse(process.stdin, process.stdout, undefined, {
+  clickDistanceThreshold: 0, // Require exact position
+});
+```
+
+For better type safety, you can explicitly type the options object:
+
+```typescript
+import { Mouse, MouseOptions } from '@neiropacks/xterm-mouse';
+
+const options: MouseOptions = {
+  clickDistanceThreshold: 0,
+};
+
+const mouse = new Mouse(process.stdin, process.stdout, undefined, options);
+```
+
+#### Lenient Click Detection
+
+For applications that can tolerate more movement, increase the threshold:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse(process.stdin, process.stdout, undefined, {
+  clickDistanceThreshold: 5, // Allow up to 5 cells of movement
+});
+```
+
 ## Troubleshooting
 
 ### Mouse events not working

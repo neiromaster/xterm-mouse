@@ -1,7 +1,13 @@
 import { EventEmitter } from 'node:events';
 import { parseMouseEvents } from '../parser/ansiParser';
 import { ANSI_CODES } from '../parser/constants';
-import { MouseError, type MouseEvent, type MouseEventAction, type ReadableStreamWithEncoding } from '../types';
+import {
+  MouseError,
+  type MouseEvent,
+  type MouseEventAction,
+  type MouseOptions,
+  type ReadableStreamWithEncoding,
+} from '../types';
 
 /**
  * Represents and manages mouse events in a TTY environment.
@@ -12,18 +18,42 @@ class Mouse {
   private previousEncoding: BufferEncoding | null = null;
   private previousRawMode: boolean | null = null;
   private lastPress: MouseEvent | null = null;
+  private clickDistanceThreshold: number;
 
   /**
    * Constructs a new Mouse instance.
    * @param inputStream The readable stream to listen for mouse events on (defaults to process.stdin).
    * @param outputStream The writable stream to send control sequences to (defaults to process.stdout).
    * @param emitter The event emitter to use for emitting mouse events (defaults to a new EventEmitter).
+   * @param options Optional configuration options for mouse behavior.
+   * @param options.clickDistanceThreshold Maximum allowed distance (in cells) between press and release
+   * to qualify as a click. Defaults to 1, meaning press and release must be within 1 cell in both
+   * X and Y directions. Set to 0 to require exact same position, or higher values to allow more movement.
+   *
+   * @example
+   * ```ts
+   * // Create a Mouse instance with default settings
+   * const mouse = new Mouse();
+   *
+   * // Create a Mouse instance with a custom click distance threshold
+   * const sensitiveMouse = new Mouse(process.stdin, process.stdout, new EventEmitter(), {
+   *   clickDistanceThreshold: 0, // Require exact position for clicks
+   * });
+   *
+   * // Create a Mouse instance with a more lenient click threshold
+   * const lenientMouse = new Mouse(process.stdin, process.stdout, new EventEmitter(), {
+   *   clickDistanceThreshold: 5, // Allow up to 5 cells of movement
+   * });
+   * ```
    */
   constructor(
     private inputStream: ReadableStreamWithEncoding = process.stdin,
     private outputStream: NodeJS.WriteStream = process.stdout,
     private emitter: EventEmitter = new EventEmitter(),
-  ) {}
+    private options?: MouseOptions,
+  ) {
+    this.clickDistanceThreshold = this.options?.clickDistanceThreshold ?? 1;
+  }
 
   private handleEvent = (data: Buffer): void => {
     try {
@@ -38,7 +68,7 @@ class Mouse {
             const xDiff = Math.abs(event.x - this.lastPress.x);
             const yDiff = Math.abs(event.y - this.lastPress.y);
 
-            if (xDiff <= 1 && yDiff <= 1) {
+            if (xDiff <= this.clickDistanceThreshold && yDiff <= this.clickDistanceThreshold) {
               const clickEvent: MouseEvent = { ...event, action: 'click' };
               process.nextTick(() => {
                 this.emitter.emit('click', clickEvent);

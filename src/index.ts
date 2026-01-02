@@ -1,2 +1,3 @@
-export * from './core/Mouse';
-export * from './types';
+export { Mouse } from './core/Mouse';
+export type { MouseEvent, MouseEventAction, MouseOptions } from './types';
+export { MouseError } from './types';
