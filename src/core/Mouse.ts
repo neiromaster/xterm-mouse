@@ -15,6 +15,7 @@ import {
  */
 class Mouse {
   private enabled = false;
+  private paused = false;
   private previousEncoding: BufferEncoding | null = null;
   private previousRawMode: boolean | null = null;
   private lastPress: MouseEvent | null = null;
@@ -56,6 +57,10 @@ class Mouse {
   }
 
   private handleEvent = (data: Buffer): void => {
+    if (this.paused) {
+      return;
+    }
+
     try {
       const events = parseMouseEvents(data.toString());
       for (const event of events) {
@@ -190,6 +195,123 @@ class Mouse {
       this.previousRawMode = null;
       this.previousEncoding = null;
     }
+  };
+
+  /**
+   * Pauses mouse event emission without disabling terminal mouse mode.
+   *
+   * This method temporarily stops the emission of mouse events while keeping
+   * the terminal mouse mode active. This is useful when you want to temporarily
+   * ignore mouse events without the overhead of disabling and re-enabling mouse tracking.
+   *
+   * **Idempotent:** Calling this method when already paused has no effect.
+   *
+   * **No Terminal State Changes:** Unlike {@link disable}, this method does not:
+   * - Send ANSI escape codes to the terminal
+   * - Modify the input stream's raw mode
+   * - Change the input stream encoding
+   * - Remove event listeners from the input stream
+   *
+   * **Difference from disable():**
+   * - pause(): Stops event emission only, terminal mouse mode remains active
+   * - disable(): Stops event emission AND deactivates terminal mouse mode
+   *
+   * @see {@link resume} to resume event emission
+   * @see {@link disable} to completely disable mouse tracking
+   * @see {@link isPaused} to check if currently paused
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Temporarily ignore mouse events during an operation
+   * mouse.pause();
+   * // ... perform operations that should not trigger mouse events
+   * mouse.resume();
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Comparing pause() vs disable()
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Using pause(): Fast, no terminal overhead
+   * mouse.pause();
+   * performQuickOperation();
+   * mouse.resume(); // Terminal mouse mode was never disabled
+   *
+   * // VS using disable(): Slower, terminal overhead
+   * mouse.disable();
+   * performQuickOperation();
+   * mouse.enable(); // Had to re-enable terminal mouse mode
+   * ```
+   */
+  public pause = (): void => {
+    if (this.paused) {
+      return;
+    }
+
+    this.paused = true;
+  };
+
+  /**
+   * Resumes mouse event emission without modifying terminal mouse mode.
+   *
+   * This method resumes the emission of mouse events after they were paused
+   * using {@link pause}. The terminal mouse mode remains active throughout.
+   *
+   * **Idempotent:** Calling this method when not paused has no effect.
+   *
+   * **No Terminal State Changes:** Unlike {@link enable}, this method does not:
+   * - Send ANSI escape codes to the terminal
+   * - Modify the input stream's raw mode
+   * - Change the input stream encoding
+   * - Add event listeners to the input stream
+   *
+   * **Difference from enable():**
+   * - resume(): Resumes event emission only, assumes terminal mouse mode is already active
+   * - enable(): Activates terminal mouse mode AND resumes event emission
+   *
+   * @see {@link pause} to pause event emission
+   * @see {@link enable} to completely enable mouse tracking
+   * @see {@link isPaused} to check if currently paused
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Temporarily ignore mouse events during an operation
+   * mouse.pause();
+   * // ... perform operations that should not trigger mouse events
+   * mouse.resume(); // Events will now be emitted again
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Comparing resume() vs enable()
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Pause and resume: Fast state change
+   * mouse.pause();
+   * performOperation();
+   * mouse.resume(); // No terminal overhead
+   *
+   * // VS disable and enable: Slower, re-enables terminal
+   * mouse.disable();
+   * performOperation();
+   * mouse.enable(); // Re-enables terminal mouse mode (ANSI codes, raw mode)
+   * ```
+   */
+  public resume = (): void => {
+    if (!this.paused) {
+      return;
+    }
+
+    this.paused = false;
   };
 
   /**
@@ -531,6 +653,87 @@ class Mouse {
    */
   public isEnabled(): boolean {
     return this.enabled;
+  }
+
+  /**
+   * Checks if mouse event emission is currently paused.
+   *
+   * This method returns the current pause state of mouse event emission.
+   * When paused, no mouse events will be emitted, but terminal mouse mode
+   * remains active.
+   *
+   * **Independent from enabled state:** The paused state is independent from
+   * the enabled state. You can have:
+   * - enabled=true, paused=false: Normal operation, events are emitted
+   * - enabled=true, paused=true: Terminal mouse mode active, but no events emitted
+   * - enabled=false, paused=false: Terminal mouse mode inactive, no events emitted
+   * - enabled=false, paused=true: Terminal mouse mode inactive, pause state preserved
+   *
+   * **Difference from isEnabled():**
+   * - isPaused(): Checks if event emission is paused (state flag only)
+   * - isEnabled(): Checks if terminal mouse mode is active (includes terminal state)
+   *
+   * @returns {boolean} True if event emission is paused, false otherwise.
+   * @see {@link pause} to pause event emission
+   * @see {@link resume} to resume event emission
+   * @see {@link isEnabled} to check if terminal mouse mode is enabled
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * console.log(mouse.isPaused()); // false
+   *
+   * mouse.pause();
+   * console.log(mouse.isPaused()); // true
+   *
+   * mouse.resume();
+   * console.log(mouse.isPaused()); // false
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Comparing isPaused() vs isEnabled()
+   * const mouse = new Mouse();
+   *
+   * mouse.enable();
+   * console.log(mouse.isEnabled()); // true (terminal mouse mode active)
+   * console.log(mouse.isPaused());  // false (events are being emitted)
+   *
+   * mouse.pause();
+   * console.log(mouse.isEnabled()); // true (terminal mouse mode still active!)
+   * console.log(mouse.isPaused());  // true (events are paused)
+   *
+   * mouse.disable();
+   * console.log(mouse.isEnabled()); // false (terminal mouse mode inactive)
+   * console.log(mouse.isPaused());  // true (pause state is preserved)
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Practical use: Check state before performing operations
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * function performSensitiveOperation() {
+   *   // Save current state
+   *   const wasPaused = mouse.isPaused();
+   *
+   *   // Ensure we're paused during the operation
+   *   mouse.pause();
+   *
+   *   // ... perform operation ...
+   *
+   *   // Restore previous state
+   *   if (!wasPaused) {
+   *     mouse.resume();
+   *   }
+   * }
+   * ```
+   */
+  public isPaused(): boolean {
+    return this.paused;
   }
 
   /**

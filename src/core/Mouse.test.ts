@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 
-import type { ReadableStreamWithEncoding } from '../types';
+import type { MouseEvent, ReadableStreamWithEncoding } from '../types';
 
 import { Mouse } from './Mouse';
 
@@ -661,6 +661,1084 @@ test('Mouse.stream() should be cancellable with AbortSignal', async () => {
   }
 });
 
+test('Mouse.pause() should set paused state', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+
+  // Act
+  mouse.pause();
+
+  // Assert
+  expect(mouse.isPaused()).toBe(true);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.resume() should clear paused state', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+  mouse.pause();
+
+  // Act
+  mouse.resume();
+
+  // Assert
+  expect(mouse.isPaused()).toBe(false);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.isPaused() should report correct state', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+
+  // Assert initial state
+  expect(mouse.isPaused()).toBe(false);
+
+  // Act - pause
+  mouse.pause();
+
+  // Assert paused state
+  expect(mouse.isPaused()).toBe(true);
+
+  // Act - resume
+  mouse.resume();
+
+  // Assert resumed state
+  expect(mouse.isPaused()).toBe(false);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.pause() should be idempotent', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+
+  // Act - call pause twice
+  mouse.pause();
+  mouse.pause();
+
+  // Assert - should still be paused
+  expect(mouse.isPaused()).toBe(true);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.resume() should be idempotent', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+  mouse.pause();
+
+  // Act - call resume twice
+  mouse.resume();
+  mouse.resume();
+
+  // Assert - should still be not paused
+  expect(mouse.isPaused()).toBe(false);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.pause()/resume() should work without enable', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+
+  // Act & Assert - pause/resume should work even when not enabled
+  expect(mouse.isEnabled()).toBe(false);
+  expect(mouse.isPaused()).toBe(false);
+
+  mouse.pause();
+  expect(mouse.isPaused()).toBe(true);
+  expect(mouse.isEnabled()).toBe(false);
+
+  mouse.resume();
+  expect(mouse.isPaused()).toBe(false);
+  expect(mouse.isEnabled()).toBe(false);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should not emit press events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const pressSpy = mock(() => {});
+
+  mouse.on('press', pressSpy);
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit a press event while paused
+  stream.emit('data', Buffer.from(pressEvent));
+
+  // Assert - no press event should be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit another press event after resume
+  stream.emit('data', Buffer.from(pressEvent));
+
+  // Assert - press event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).toHaveBeenCalledTimes(1);
+  expect(pressSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'press',
+      button: 'left',
+      x: 10,
+      y: 20,
+    }),
+  );
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should not emit release events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const releaseEvent = '\x1b[<0;10;20m';
+  const releaseSpy = mock(() => {});
+
+  mouse.on('release', releaseSpy);
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit a release event while paused
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert - no release event should be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(releaseSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit another release event after resume
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert - release event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(releaseSpy).toHaveBeenCalledTimes(1);
+  expect(releaseSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'release',
+      button: 'left',
+      x: 10,
+      y: 20,
+    }),
+  );
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should not emit drag events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const dragEvent = '\x1b[<32;15;25M'; // Button 32 = left button with motion bit
+  const dragSpy = mock(() => {});
+
+  mouse.on('drag', dragSpy);
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit a drag event while paused
+  stream.emit('data', Buffer.from(dragEvent));
+
+  // Assert - no drag event should be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(dragSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit another drag event after resume
+  stream.emit('data', Buffer.from(dragEvent));
+
+  // Assert - drag event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(dragSpy).toHaveBeenCalledTimes(1);
+  expect(dragSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'drag',
+      button: 'left',
+      x: 15,
+      y: 25,
+    }),
+  );
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should not emit wheel events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const wheelEvent = '\x1b[<64;10;20M'; // Button 64 = wheel up
+  const wheelSpy = mock(() => {});
+
+  mouse.on('wheel', wheelSpy);
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit a wheel event while paused
+  stream.emit('data', Buffer.from(wheelEvent));
+
+  // Assert - no wheel event should be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(wheelSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit another wheel event after resume
+  stream.emit('data', Buffer.from(wheelEvent));
+
+  // Assert - wheel event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(wheelSpy).toHaveBeenCalledTimes(1);
+  expect(wheelSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'wheel',
+      button: 'wheel-up',
+      x: 10,
+      y: 20,
+    }),
+  );
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should not emit move events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const moveEvent = '\x1b[<35;10;20M'; // Button 35 = button 3 with motion bit (move)
+  const moveSpy = mock(() => {});
+
+  mouse.on('move', moveSpy);
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit a move event while paused
+  stream.emit('data', Buffer.from(moveEvent));
+
+  // Assert - no move event should be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(moveSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit another move event after resume
+  stream.emit('data', Buffer.from(moveEvent));
+
+  // Assert - move event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(moveSpy).toHaveBeenCalledTimes(1);
+  expect(moveSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'move',
+      button: 'none',
+      x: 10,
+      y: 20,
+    }),
+  );
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should not emit click events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const releaseEvent = '\x1b[<0;10;20m';
+  const clickSpy = mock(() => {});
+
+  mouse.on('click', clickSpy);
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit press and release events while paused
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert - no click event should be emitted
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit press and release events after resume
+  stream.emit('data', Buffer.from(pressEvent));
+  stream.emit('data', Buffer.from(releaseEvent));
+
+  // Assert - click event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(clickSpy).toHaveBeenCalledTimes(1);
+  expect(clickSpy).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'click',
+      button: 'left',
+      x: 10,
+      y: 20,
+    }),
+  );
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should block all event types when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+
+  const pressSpy = mock(() => {});
+  const releaseSpy = mock(() => {});
+  const dragSpy = mock(() => {});
+  const wheelSpy = mock(() => {});
+  const moveSpy = mock(() => {});
+
+  mouse.on('press', pressSpy);
+  mouse.on('release', releaseSpy);
+  mouse.on('drag', dragSpy);
+  mouse.on('wheel', wheelSpy);
+  mouse.on('move', moveSpy);
+
+  mouse.enable();
+
+  // Act - pause the mouse
+  mouse.pause();
+
+  // Emit various events while paused
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press
+  stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release
+  stream.emit('data', Buffer.from('\x1b[<32;15;25M')); // drag
+  stream.emit('data', Buffer.from('\x1b[<64;10;20M')); // wheel
+  stream.emit('data', Buffer.from('\x1b[<35;10;20M')); // move
+
+  // Assert - no events should be emitted while paused
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).not.toHaveBeenCalled();
+  expect(releaseSpy).not.toHaveBeenCalled();
+  expect(dragSpy).not.toHaveBeenCalled();
+  expect(wheelSpy).not.toHaveBeenCalled();
+  expect(moveSpy).not.toHaveBeenCalled();
+
+  // Act - resume the mouse
+  mouse.resume();
+
+  // Emit the same events after resume
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press
+  stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release
+  stream.emit('data', Buffer.from('\x1b[<32;15;25M')); // drag
+  stream.emit('data', Buffer.from('\x1b[<64;10;20M')); // wheel
+  stream.emit('data', Buffer.from('\x1b[<35;10;20M')); // move
+
+  // Assert - all events should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).toHaveBeenCalledTimes(1);
+  expect(releaseSpy).toHaveBeenCalledTimes(1);
+  expect(dragSpy).toHaveBeenCalledTimes(1);
+  expect(wheelSpy).toHaveBeenCalledTimes(1);
+  expect(moveSpy).toHaveBeenCalledTimes(1);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.pause()/resume() should not make terminal mode changes', () => {
+  // Arrange - Create stream with mocked methods to track terminal mode changes
+  const stream = makeFakeTTYStream();
+  const writeSpy = mock(() => true);
+  const setRawModeSpy = mock(() => stream);
+
+  const mockOutputStream = {
+    write: writeSpy,
+  } as unknown as NodeJS.WriteStream;
+
+  stream.setRawMode = setRawModeSpy as never;
+
+  const mouse = new Mouse(stream, mockOutputStream);
+
+  // Act - call pause() without enabling
+  mouse.pause();
+
+  // Assert - verify paused state changed but no terminal mode changes occurred
+  expect(mouse.isPaused()).toBe(true);
+  expect(mouse.isEnabled()).toBe(false);
+  expect(writeSpy).not.toHaveBeenCalled();
+  expect(setRawModeSpy).not.toHaveBeenCalled();
+
+  // Act - call resume() without enabling
+  mouse.resume();
+
+  // Assert - verify paused state changed but still no terminal mode changes
+  expect(mouse.isPaused()).toBe(false);
+  expect(mouse.isEnabled()).toBe(false);
+  expect(writeSpy).not.toHaveBeenCalled();
+  expect(setRawModeSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.pause()/resume() should not interfere with enable/disable', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const writeSpy = mock(() => true);
+  const setRawModeSpy = mock(() => stream);
+
+  const mockOutputStream = {
+    write: writeSpy,
+  } as unknown as NodeJS.WriteStream;
+
+  stream.setRawMode = setRawModeSpy as never;
+
+  const mouse = new Mouse(stream, mockOutputStream);
+
+  // Act - pause before enable
+  mouse.pause();
+
+  // Assert - should be paused but not enabled, no terminal writes
+  expect(mouse.isPaused()).toBe(true);
+  expect(mouse.isEnabled()).toBe(false);
+  expect(writeSpy).not.toHaveBeenCalled();
+
+  // Act - now enable (should enable terminal mode)
+  mouse.enable();
+
+  // Assert - should be enabled and paused, terminal writes should have occurred
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(true);
+  expect(writeSpy).toHaveBeenCalled();
+  expect(setRawModeSpy).toHaveBeenCalledWith(true);
+
+  // Reset spies for next verification
+  writeSpy.mockClear();
+  setRawModeSpy.mockClear();
+
+  // Act - resume (should not make terminal changes)
+  mouse.resume();
+
+  // Assert - should be enabled and not paused, no additional terminal writes
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(false);
+  expect(writeSpy).not.toHaveBeenCalled();
+  expect(setRawModeSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.disable();
+  mouse.destroy();
+});
+
+test('Mouse.eventsOf() should not yield events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const iterator = mouse.eventsOf('press');
+
+  try {
+    mouse.enable();
+
+    // Start the async generator
+    const firstEventPromise = iterator.next();
+
+    // Act - pause the mouse
+    mouse.pause();
+
+    // Emit a press event while paused
+    stream.emit('data', Buffer.from(pressEvent));
+
+    // Give some time for event processing
+    await Bun.sleep(50);
+
+    // Assert - the promise should still be pending (no event yielded)
+    // We can verify this by checking if we can create a race that times out
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100));
+
+    try {
+      await Promise.race([firstEventPromise, timeoutPromise]);
+      // If we get here, the event was yielded (which is wrong)
+      expect(false).toBe(true); // This should not be reached
+    } catch (err) {
+      // We expect a timeout error, meaning no event was yielded
+      expect((err as Error).message).toBe('Timeout');
+    }
+
+    // Act - resume the mouse
+    mouse.resume();
+
+    // Emit another press event after resume
+    stream.emit('data', Buffer.from(pressEvent));
+
+    // Assert - now the event should be yielded
+    const { value } = await firstEventPromise;
+    expect(value.action).toBe('press');
+    expect(value.button).toBe('left');
+    expect(value.x).toBe(10);
+    expect(value.y).toBe(20);
+  } finally {
+    // Cleanup
+    await iterator.return(undefined);
+    mouse.destroy();
+  }
+});
+
+test('Mouse.eventsOf() should queue and yield events after resume', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const iterator = mouse.eventsOf('press');
+
+  try {
+    mouse.enable();
+
+    // Start the async generator by consuming the first event
+    const firstEventPromise = iterator.next();
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M'));
+    const { value: firstEvent } = await firstEventPromise;
+    expect(firstEvent.x).toBe(10);
+
+    // Act - pause the mouse
+    mouse.pause();
+
+    // Emit events while paused (these should be dropped, not queued)
+    stream.emit('data', Buffer.from('\x1b[<0;11;21M'));
+    stream.emit('data', Buffer.from('\x1b[<0;12;22M'));
+
+    await Bun.sleep(50);
+
+    // Act - resume the mouse
+    mouse.resume();
+
+    // Emit new events after resume (these should be yielded)
+    stream.emit('data', Buffer.from('\x1b[<0;13;23M'));
+    stream.emit('data', Buffer.from('\x1b[<0;14;24M'));
+
+    // Assert - should get the events after resume, not the ones during pause
+    const { value: secondEvent } = await iterator.next();
+    expect(secondEvent.x).toBe(13); // First event after resume
+    expect(secondEvent.y).toBe(23);
+
+    const { value: thirdEvent } = await iterator.next();
+    expect(thirdEvent.x).toBe(14); // Second event after resume
+    expect(thirdEvent.y).toBe(24);
+  } finally {
+    // Cleanup
+    await iterator.return(undefined);
+    mouse.destroy();
+  }
+});
+
+test('Mouse.stream() should not yield events when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const iterator = mouse.stream();
+
+  try {
+    mouse.enable();
+
+    // Start the async generator
+    const firstEventPromise = iterator.next();
+
+    // Act - pause the mouse
+    mouse.pause();
+
+    // Emit a press event while paused
+    stream.emit('data', Buffer.from(pressEvent));
+
+    // Give some time for event processing
+    await Bun.sleep(50);
+
+    // Assert - the promise should still be pending (no event yielded)
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100));
+
+    try {
+      await Promise.race([firstEventPromise, timeoutPromise]);
+      // If we get here, the event was yielded (which is wrong)
+      expect(false).toBe(true); // This should not be reached
+    } catch (err) {
+      // We expect a timeout error, meaning no event was yielded
+      expect((err as Error).message).toBe('Timeout');
+    }
+
+    // Act - resume the mouse
+    mouse.resume();
+
+    // Emit another press event after resume
+    stream.emit('data', Buffer.from(pressEvent));
+
+    // Assert - now the event should be yielded
+    const { value } = await firstEventPromise;
+    expect(value.type).toBe('press');
+    expect(value.event.action).toBe('press');
+    expect(value.event.button).toBe('left');
+    expect(value.event.x).toBe(10);
+    expect(value.event.y).toBe(20);
+  } finally {
+    // Cleanup
+    await iterator.return(undefined);
+    mouse.destroy();
+  }
+});
+
+test('Mouse.stream() should not yield events of any type when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const iterator = mouse.stream();
+
+  try {
+    mouse.enable();
+
+    // Start the async generator
+    const firstEventPromise = iterator.next();
+
+    // Act - pause the mouse
+    mouse.pause();
+
+    // Emit various events while paused
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press
+    stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release
+    stream.emit('data', Buffer.from('\x1b[<32;15;25M')); // drag
+    stream.emit('data', Buffer.from('\x1b[<64;10;20M')); // wheel
+    stream.emit('data', Buffer.from('\x1b[<35;10;20M')); // move
+
+    // Give some time for event processing
+    await Bun.sleep(50);
+
+    // Assert - the promise should still be pending (no events yielded)
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100));
+
+    try {
+      await Promise.race([firstEventPromise, timeoutPromise]);
+      // If we get here, an event was yielded (which is wrong)
+      expect(false).toBe(true); // This should not be reached
+    } catch (err) {
+      // We expect a timeout error, meaning no event was yielded
+      expect((err as Error).message).toBe('Timeout');
+    }
+
+    // Act - resume the mouse
+    mouse.resume();
+
+    // Emit events after resume
+    stream.emit('data', Buffer.from('\x1b[<0;11;21M')); // press
+
+    // Assert - now events should be yielded
+    const { value } = await firstEventPromise;
+    expect(value.type).toBe('press');
+    expect(value.event.x).toBe(11);
+    expect(value.event.y).toBe(21);
+  } finally {
+    // Cleanup
+    await iterator.return(undefined);
+    mouse.destroy();
+  }
+});
+
+test('Mouse.eventsOf() with latestOnly should not update when paused', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const iterator = mouse.eventsOf('press', { latestOnly: true });
+
+  try {
+    mouse.enable();
+
+    // Start the async generator by consuming the first event
+    const firstEventPromise = iterator.next();
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M'));
+    const { value: firstEvent } = await firstEventPromise;
+    expect(firstEvent.x).toBe(10);
+
+    // Act - pause the mouse
+    mouse.pause();
+
+    // Emit multiple events while paused (none should be captured)
+    stream.emit('data', Buffer.from('\x1b[<0;11;21M'));
+    stream.emit('data', Buffer.from('\x1b[<0;12;22M'));
+    stream.emit('data', Buffer.from('\x1b[<0;13;23M'));
+
+    await Bun.sleep(50);
+
+    // Act - resume the mouse
+    mouse.resume();
+
+    // Emit new events after resume
+    stream.emit('data', Buffer.from('\x1b[<0;14;24M'));
+    stream.emit('data', Buffer.from('\x1b[<0;15;25M'));
+
+    // Assert - should get the latest event after resume, not any from pause
+    const { value: latestEvent } = await iterator.next();
+    expect(latestEvent.x).toBe(15); // Latest event after resume
+    expect(latestEvent.y).toBe(25);
+  } finally {
+    // Cleanup
+    await iterator.return(undefined);
+    mouse.destroy();
+  }
+});
+
+test('Mouse.pause() then disable() should preserve paused state', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+
+  // Act - enable, then pause, then disable
+  mouse.enable();
+  mouse.pause();
+  mouse.disable();
+
+  // Assert - paused state should be preserved even after disable
+  expect(mouse.isPaused()).toBe(true);
+  expect(mouse.isEnabled()).toBe(false);
+
+  // Act - re-enable
+  mouse.enable();
+
+  // Assert - should still be paused after re-enable
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(true);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.disable() then pause() should set paused state independently', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+
+  // Act - enable, then disable, then pause
+  mouse.enable();
+  mouse.disable();
+  mouse.pause();
+
+  // Assert - both states should be independent
+  expect(mouse.isEnabled()).toBe(false);
+  expect(mouse.isPaused()).toBe(true);
+
+  // Act - resume
+  mouse.resume();
+
+  // Assert - paused state cleared, but still disabled
+  expect(mouse.isPaused()).toBe(false);
+  expect(mouse.isEnabled()).toBe(false);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.resume() while disabled should not make terminal changes', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const writeSpy = mock(() => true);
+  const setRawModeSpy = mock(() => stream);
+
+  const mockOutputStream = {
+    write: writeSpy,
+  } as unknown as NodeJS.WriteStream;
+
+  stream.setRawMode = setRawModeSpy as never;
+
+  const mouse = new Mouse(stream, mockOutputStream);
+
+  // Act - enable, pause, disable, then resume while disabled
+  mouse.enable();
+  mouse.pause();
+  mouse.disable();
+
+  // Reset spies to clear previous calls
+  writeSpy.mockClear();
+  setRawModeSpy.mockClear();
+
+  mouse.resume();
+
+  // Assert - resume should not make any terminal writes
+  expect(mouse.isPaused()).toBe(false);
+  expect(mouse.isEnabled()).toBe(false);
+  expect(writeSpy).not.toHaveBeenCalled();
+  expect(setRawModeSpy).not.toHaveBeenCalled();
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse.enable() while paused should preserve paused state', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const pressSpy = mock(() => {});
+
+  mouse.on('press', pressSpy);
+
+  // Act - pause before enable
+  mouse.pause();
+
+  // Enable while paused
+  mouse.enable();
+
+  // Assert - should be enabled but still paused
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(true);
+
+  // Emit an event while paused
+  stream.emit('data', Buffer.from(pressEvent));
+
+  // Assert - no event should be emitted while paused
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).not.toHaveBeenCalled();
+
+  // Act - resume
+  mouse.resume();
+
+  // Emit another event after resume
+  stream.emit('data', Buffer.from(pressEvent));
+
+  // Assert - event should now be emitted
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).toHaveBeenCalledTimes(1);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should handle full cycle: pause → disable → enable → resume', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const pressSpy = mock(() => {});
+
+  mouse.on('press', pressSpy);
+
+  // Act - full cycle: enable → pause → disable → enable → resume
+  mouse.enable();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(false);
+
+  mouse.pause();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(true);
+
+  mouse.disable();
+  expect(mouse.isEnabled()).toBe(false);
+  expect(mouse.isPaused()).toBe(true); // Paused state preserved
+
+  mouse.enable();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(true); // Still paused
+
+  // Emit event while paused - should be blocked
+  stream.emit('data', Buffer.from(pressEvent));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).not.toHaveBeenCalled();
+
+  mouse.resume();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(false);
+
+  // Emit event after resume - should be emitted
+  stream.emit('data', Buffer.from(pressEvent));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).toHaveBeenCalledTimes(1);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should handle reverse cycle: disable → pause → enable → resume', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const pressSpy = mock(() => {});
+
+  mouse.on('press', pressSpy);
+
+  // Act - reverse cycle: enable → disable → pause → enable → resume
+  mouse.enable();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(false);
+
+  mouse.disable();
+  expect(mouse.isEnabled()).toBe(false);
+  expect(mouse.isPaused()).toBe(false);
+
+  mouse.pause();
+  expect(mouse.isEnabled()).toBe(false);
+  expect(mouse.isPaused()).toBe(true);
+
+  mouse.enable();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(true); // Still paused
+
+  // Emit event while paused - should be blocked
+  stream.emit('data', Buffer.from(pressEvent));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).not.toHaveBeenCalled();
+
+  mouse.resume();
+  expect(mouse.isEnabled()).toBe(true);
+  expect(mouse.isPaused()).toBe(false);
+
+  // Emit event after resume - should be emitted
+  stream.emit('data', Buffer.from(pressEvent));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(pressSpy).toHaveBeenCalledTimes(1);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse should handle multiple pause/resume cycles with enable/disable', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const pressEvent = '\x1b[<0;10;20M';
+  const pressSpy = mock(() => {});
+
+  mouse.on('press', pressSpy);
+  mouse.enable();
+
+  // Act - multiple cycles of pause/resume
+  for (let i = 0; i < 3; i++) {
+    // Pause
+    mouse.pause();
+    expect(mouse.isPaused()).toBe(true);
+
+    // Emit while paused - should be blocked
+    stream.emit('data', Buffer.from(pressEvent));
+    expect(pressSpy).toHaveBeenCalledTimes(i);
+
+    // Resume
+    mouse.resume();
+    expect(mouse.isPaused()).toBe(false);
+
+    // Emit after resume - should be emitted
+    stream.emit('data', Buffer.from(pressEvent));
+    expect(pressSpy).toHaveBeenCalledTimes(i + 1);
+  }
+
+  // Act - disable/enable cycle
+  mouse.disable();
+  expect(mouse.isEnabled()).toBe(false);
+
+  mouse.enable();
+  expect(mouse.isEnabled()).toBe(true);
+
+  // Emit event - should work (this is the 4th event: 3 from cycles + 1 after disable/enable)
+  stream.emit('data', Buffer.from(pressEvent));
+  expect(pressSpy).toHaveBeenCalledTimes(4);
+
+  // Cleanup
+  mouse.destroy();
+});
+
+test('Mouse eventsOf should handle pause → disable → enable → resume cycle', async () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+  const iterator = mouse.eventsOf('press');
+
+  try {
+    mouse.enable();
+
+    // Start the async generator
+    const firstEventPromise = iterator.next();
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M'));
+    const { value: firstEvent } = await firstEventPromise;
+    expect(firstEvent.x).toBe(10);
+
+    // Act - pause → disable → enable → resume cycle
+    mouse.pause();
+    mouse.disable();
+    mouse.enable();
+
+    // Emit event while still paused - should not be yielded
+    stream.emit('data', Buffer.from('\x1b[<0;11;21M'));
+    await Bun.sleep(50);
+
+    // Resume
+    mouse.resume();
+
+    // Emit event after resume - should be yielded
+    stream.emit('data', Buffer.from('\x1b[<0;12;22M'));
+
+    // Assert - should get the event after resume
+    const { value: secondEvent } = await iterator.next();
+    expect(secondEvent.x).toBe(12);
+    expect(secondEvent.y).toBe(22);
+  } finally {
+    // Cleanup
+    await iterator.return(undefined);
+    mouse.destroy();
+  }
+});
+
+test('Mouse.isPaused() and isEnabled() should remain independent through all transitions', () => {
+  // Arrange
+  const mouse = new Mouse(makeFakeTTYStream());
+
+  // Test all state combinations to ensure independence
+  const testStates = [
+    { action: () => mouse.pause(), expectedPaused: true, expectedEnabled: false },
+    { action: () => mouse.resume(), expectedPaused: false, expectedEnabled: false },
+    { action: () => mouse.enable(), expectedPaused: false, expectedEnabled: true },
+    { action: () => mouse.pause(), expectedPaused: true, expectedEnabled: true },
+    { action: () => mouse.disable(), expectedPaused: true, expectedEnabled: false },
+    { action: () => mouse.resume(), expectedPaused: false, expectedEnabled: false },
+    { action: () => mouse.enable(), expectedPaused: false, expectedEnabled: true },
+    { action: () => mouse.disable(), expectedPaused: false, expectedEnabled: false },
+  ];
+
+  for (const state of testStates) {
+    state.action();
+    expect(mouse.isPaused()).toBe(state.expectedPaused);
+    expect(mouse.isEnabled()).toBe(state.expectedEnabled);
+  }
+
+  // Cleanup
+  mouse.destroy();
+});
+
 test('Mouse default threshold should emit click when press and release at same position', async () => {
   // Arrange
   const stream = makeFakeTTYStream();
@@ -796,11 +1874,14 @@ test('Mouse default threshold should maintain backward compatibility with hardco
 
   // Test case 1: Same position (should click)
   const click1Promise = new Promise<void>((resolve) => {
-    mouse.on('click', (event) => {
-      expect(event.x).toBe(10);
-      expect(event.y).toBe(20);
+    const handler = (event: unknown) => {
+      mouse.off('click', handler);
+      expect(event).toBeDefined();
+      expect((event as MouseEvent).x).toBe(10);
+      expect((event as MouseEvent).y).toBe(20);
       resolve();
-    });
+    };
+    mouse.on('click', handler);
   });
 
   mouse.enable();
