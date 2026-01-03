@@ -628,10 +628,26 @@ This library is currently in its early stages of development. While efforts are 
 
 ### Available Commands
 
+**Development:**
+
 * **`bun run build`**: Compiles the TypeScript code into JavaScript and generates type declaration files.
-* **`bun run lint`**: Runs ESLint and Biome checks to identify code quality issues.
-* **`bun run format`**: Formats the code using Biome and applies ESLint fixes.
-* **`bun run lint:fix`**: Applies ESLint fixes to the codebase.
-* **`bun run biome:check`**: Runs Biome checks and applies unsafe fixes.
+* **`bun run typecheck`**: Type checks the code without emitting output.
+* **`bun run test`**: Runs all tests.
+* **`bun run coverage`**: Runs tests with coverage report.
+
+**Code Quality:**
+
+* **`bun run lint`**: Runs Biome, dprint, and markdownlint checks.
+* **`bun run lint:md`**: Runs markdownlint checks only.
+* **`bun run format`**: Formats code using Biome, dprint, and markdownlint.
+* **`bun run format:md`**: Formats markdown files using markdownlint.
+
+**Examples:**
+
 * **`bun run dev:basic`**: Runs the basic example with hot-reloading.
 * **`bun run dev:streaming`**: Runs the streaming example with hot-reloading.
+* **`bun run dev:custom-threshold`**: Runs the custom threshold example with hot-reloading.
+* **`bun run dev:pause-resume`**: Runs the pause/resume example with hot-reloading.
+* **`bun run dev:interactive-buttons`**: Runs the interactive buttons demo.
+* **`bun run dev:interactive-menu`**: Runs the interactive menu demo.
+* **`bun run dev:interactive-grid`**: Runs the interactive grid demo.
