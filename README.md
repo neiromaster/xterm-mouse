@@ -115,6 +115,63 @@ process.stdin.on('data', (data) => {
 });
 ```
 
+#### Interactive Visual Examples
+
+The library includes several interactive examples demonstrating real-world terminal UI patterns with mouse interactions:
+
+##### Interactive Buttons Demo
+
+Demonstrates clickable buttons with visual feedback, hover effects, and click animations:
+
+```bash
+bun run dev:interactive-buttons
+```
+
+Features:
+
+* Multiple clickable buttons with different colors
+* Hover effects (highlight when mouse over)
+* Click animation (visual feedback on press)
+* Status bar showing current action
+
+##### Interactive Menu Demo
+
+Shows a menu with hover effects, selection highlighting, and keyboard navigation:
+
+```bash
+bun run dev:interactive-menu
+```
+
+Features:
+
+* Menu items with hover highlight
+* Click to select with visual feedback
+* Description panel showing item details
+* Keyboard navigation (↑/↓ arrows, Enter to select)
+
+##### Interactive Grid Demo
+
+Demonstrates a clickable grid with drag-to-paint functionality:
+
+```bash
+bun run dev:interactive-grid
+```
+
+Features:
+
+* Grid of clickable cells (16×10)
+* Click to toggle cell state
+* Drag to paint multiple cells
+* Color palette selection
+* Real-time visual feedback
+
+These examples demonstrate how to build interactive terminal UIs using:
+
+* ANSI escape codes for cursor positioning
+* Color and text styling for visual feedback
+* Mouse events for interaction
+* Real-time UI updates
+
 #### TypeScript Type Inference
 
 The library provides advanced TypeScript type inference for event handlers. The `on()` and `off()` methods automatically infer the correct event type based on the event name:

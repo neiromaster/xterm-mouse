@@ -27,6 +27,11 @@
     "format:md": "markdownlint-cli2 fix \"**/*.md\"",
     "dev:basic": "bun run --watch examples/basic.ts",
     "dev:streaming": "bun run --watch examples/streaming.ts",
+    "dev:custom-threshold": "bun run --watch examples/custom-threshold.ts",
+    "dev:pause-resume": "bun run --watch examples/pause-resume.ts",
+    "dev:interactive-buttons": "bun run --watch examples/interactive-buttons.ts",
+    "dev:interactive-menu": "bun run --watch examples/interactive-menu.ts",
+    "dev:interactive-grid": "bun run --watch examples/interactive-grid.ts",
     "test": "bun test",
     "coverage": "bun test --coverage",
     "typecheck": "tsc --noEmit"
