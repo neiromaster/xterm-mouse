@@ -32,10 +32,10 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3.7",
+    "@biomejs/biome": "^2.3.11",
     "@types/bun": "latest",
-    "dprint": "^0.50.2",
-    "lefthook": "^2.0.4",
+    "dprint": "^0.51.1",
+    "lefthook": "^2.0.13",
     "markdownlint-cli2": "^0.20.0",
     "tsup": "^8.5.1",
     "typescript": "^5"
