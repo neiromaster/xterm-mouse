@@ -1,6 +1,6 @@
 import type { ButtonType, ESCMouseEvent, MouseEventAction, SGRMouseEvent } from '../types';
 
-import { ANSI_RESPONSE_PATTERNS } from './constants.ts';
+import { ANSI_RESPONSE_PATTERNS, MAX_EVENT_LENGTHS } from './constants.ts';
 
 /**
  * Decodes the SGR (SGR-Style) mouse button code into button type and action.
@@ -130,7 +130,9 @@ function decodeESCButton(code: number): { button: ButtonType; action: MouseEvent
  * @returns A tuple containing the parsed mouse event (or null if parsing fails) and the position to continue parsing from.
  */
 function parseSGRMouseEvent(data: string, start: number): [SGRMouseEvent | null, number] {
-  const match = data.substring(start).match(ANSI_RESPONSE_PATTERNS.sgrPattern);
+  const slice = data.slice(start, start + MAX_EVENT_LENGTHS.sgr);
+
+  const match = slice.match(ANSI_RESPONSE_PATTERNS.sgrPattern);
 
   if (!match) {
     return [null, start + 1];
@@ -172,7 +174,9 @@ function parseSGRMouseEvent(data: string, start: number): [SGRMouseEvent | null,
  * @returns A tuple containing the parsed mouse event (or null if parsing fails) and the position to continue parsing from.
  */
 function parseESCMouseEvent(data: string, start: number): [ESCMouseEvent | null, number] {
-  const match = data.substring(start).match(ANSI_RESPONSE_PATTERNS.escPattern);
+  const slice = data.slice(start, start + MAX_EVENT_LENGTHS.esc);
+
+  const match = slice.match(ANSI_RESPONSE_PATTERNS.escPattern);
 
   if (!match) {
     return [null, start + 1];

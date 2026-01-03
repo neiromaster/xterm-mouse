@@ -292,3 +292,128 @@ describe('Coverage-specific tests', () => {
     expect(events.length).toBe(0); // Should return empty due to NaN parsing
   });
 });
+
+describe('ReDoS protection', () => {
+  test('should handle maximum allowed coordinate values', () => {
+    // Test maximum allowed values: button code 3 digits, coordinates 4 digits
+    const maxButton = '255'; // 3 digits
+    const maxCoord = '9999'; // 4 digits
+    const input = `\x1b[<${maxButton};${maxCoord};${maxCoord}M`;
+    const events = [...parseMouseEvents(input)];
+
+    // Should parse successfully with maximum values
+    expect(events.length).toBe(1);
+    expect(events[0]?.x).toBe(9999);
+    expect(events[0]?.y).toBe(9999);
+  });
+
+  test('should reject coordinates beyond 4 digits', () => {
+    // 5 digits exceeds the {1,4} limit
+    const tooLong = '99999';
+    const input = `\x1b[<0;${tooLong};20M`;
+    const events = [...parseMouseEvents(input)];
+
+    // Should not parse - exceeds coordinate limit
+    expect(events.length).toBe(0);
+  });
+
+  test('should reject button codes beyond 3 digits', () => {
+    // 4 digits exceeds the {1,3} limit
+    const tooLong = '9999';
+    const input = `\x1b[<${tooLong};10;20M`;
+    const events = [...parseMouseEvents(input)];
+
+    // Should not parse - exceeds button code limit
+    expect(events.length).toBe(0);
+  });
+
+  test('should truncate input beyond MAX_EVENT_LENGTHS', () => {
+    // Create a string with valid SGR event followed by lots of junk
+    const validEvent = '\x1b[<0;10;20M';
+    const junk = 'a'.repeat(10000);
+    const input = validEvent + junk;
+
+    const start = Date.now();
+    const events = [...parseMouseEvents(input)];
+    const elapsed = Date.now() - start;
+
+    // Should parse the valid event and complete quickly
+    expect(events.length).toBe(1);
+    expect(events[0]?.button).toBe('left');
+    // Should complete in less than 100ms even with 10KB of junk
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  test('should handle repeated incomplete escape sequences efficiently', () => {
+    // Create many incomplete escape sequences that could cause catastrophic backtracking
+    // if the regex were vulnerable to ReDoS
+    const incomplete = '\x1b[<0;'.repeat(10000);
+
+    const start = Date.now();
+    const events = [...parseMouseEvents(incomplete)];
+    const elapsed = Date.now() - start;
+
+    // Should return empty and complete quickly
+    expect(events.length).toBe(0);
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  test('should handle malformed SGR with very long coordinate values', () => {
+    // Event with 5-digit coordinate (exceeds {1,4} limit)
+    const tooLongCoord = '99999'; // 5 digits
+    const input = `\x1b[<0;${tooLongCoord};20M`;
+
+    const start = Date.now();
+    const events = [...parseMouseEvents(input)];
+    const elapsed = Date.now() - start;
+
+    // Should reject due to exceeding coordinate limit
+    expect(events.length).toBe(0);
+    expect(elapsed).toBeLessThan(50);
+  });
+
+  test('should handle mixed valid and invalid long input', () => {
+    const validEvent = '\x1b[<0;10;20M';
+    // Garbage with numbers that exceed the digit limits
+    const garbage = '\x1b[<99999;'.repeat(100); // 5 digits exceeds {1,3} button limit
+
+    const start = Date.now();
+    const events = [...parseMouseEvents(garbage + validEvent)];
+    const elapsed = Date.now() - start;
+
+    // Should find the valid event despite the garbage
+    expect(events.length).toBe(1);
+    expect(events[0]?.button).toBe('left');
+    expect(elapsed).toBeLessThan(100);
+  });
+
+  test('should limit ESC event input length', () => {
+    // Valid ESC event followed by lots of text
+    const validEvent = '\x1b[M #4';
+    const junk = 'x'.repeat(10000);
+    const input = validEvent + junk;
+
+    const start = Date.now();
+    const events = [...parseMouseEvents(input)];
+    const elapsed = Date.now() - start;
+
+    // Should parse efficiently
+    expect(events.length).toBe(1);
+    expect(events[0]?.protocol).toBe('ESC');
+    expect(elapsed).toBeLessThan(50);
+  });
+
+  test('should handle many concatenated events efficiently', () => {
+    // Create 1000 valid mouse events
+    const events = '\x1b[<0;1;1M'.repeat(1000);
+
+    const start = Date.now();
+    const parsed = [...parseMouseEvents(events)];
+    const elapsed = Date.now() - start;
+
+    // Should parse all events quickly
+    // Only first unique event should be returned due to deduplication
+    expect(parsed.length).toBe(1);
+    expect(elapsed).toBeLessThan(100);
+  });
+});
