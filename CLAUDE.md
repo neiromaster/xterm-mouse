@@ -98,6 +98,31 @@ The `eventsOf()` and `stream()` methods return async generators with:
 - `latestOnly` mode for high-frequency events (keeps only newest event)
 - Automatic listener cleanup on abort, completion, or error
 
+### TypeScript Type Inference
+
+The library provides advanced type inference for event handlers through discriminated union types:
+
+- **`EventByAction<T>`**: Maps event action to specific event type with narrowed button types
+  - `'wheel'` → `button: 'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'`
+  - `'move'` → `button: 'none'`
+  - `'drag'` → `button: 'left' | 'middle' | 'right' | 'back' | 'forward'`
+  - `'press' | 'release' | 'click'` → `button: ButtonType` (all buttons)
+
+- **`TypedEventListener<T>`**: Type-safe listener with inferred event parameter type
+- **`ListenerFor<T>`**: Extracts listener type for a given event name
+- **`EventTypeFor<T>`**: Extracts event type for a given event name
+
+The `Mouse.on()` and `Mouse.off()` methods use these utilities to provide type-safe event handling:
+
+```typescript
+mouse.on('wheel', (event) => {
+  // TypeScript knows event.button is 'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'
+  console.log(event.button);
+});
+```
+
+Type inference utilities are exported from `src/types/eventHandler.ts` and re-exported from `src/types/index.ts`.
+
 ## Code Organization
 
 ```
@@ -111,7 +136,15 @@ src/
 │   ├── ansiParser.test.ts
 │   └── constants.ts   # ANSI codes and regex patterns
 └── types/
-    └── index.ts       # Type definitions (MouseEvent, MouseOptions, etc.)
+    ├── index.ts       # Type definitions barrel export
+    ├── action.ts      # MouseEventAction type
+    ├── button.ts      # ButtonType union
+    ├── event.ts       # MouseEvent discriminated union
+    ├── eventHandler.ts  # Type inference utilities (EventByAction, TypedEventListener, etc.)
+    ├── eventHandler.test.ts  # Type inference tests
+    ├── options.ts     # MouseOptions interface
+    ├── error.ts       # MouseError class
+    └── stream.ts      # ReadableStreamWithEncoding type
 ```
 
 ## Testing Approach

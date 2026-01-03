@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { parseMouseEvents } from '../parser/ansiParser';
 import { ANSI_CODES } from '../parser/constants';
 import {
+  type ListenerFor,
   MouseError,
   type MouseEvent,
   type MouseEventAction,
@@ -491,23 +492,69 @@ class Mouse {
 
   /**
    * Registers a listener for a specific mouse event.
+   *
+   * **Type Inference:**
+   * This method uses TypeScript's type inference to provide accurate types for the event parameter
+   * based on the event name. For example:
+   * - For 'wheel' events, `event.button` is typed as `'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'`
+   * - For 'move' events, `event.button` is typed as `'none'`
+   * - For 'drag' events, `event.button` excludes wheel buttons
+   *
    * @param event The name of the event to listen for.
    * @param listener The callback function to execute when the event is triggered.
    * @returns The event emitter instance.
    * @see {@link off} to remove the listener
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // TypeScript knows event.button is a wheel button type here
+   * mouse.on('wheel', (event) => {
+   *   console.log(event.button); // 'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'
+   * });
+   *
+   * // TypeScript knows event.button is 'none' here
+   * mouse.on('move', (event) => {
+   *   console.log(event.button); // 'none'
+   * });
+   * ```
    */
-  public on = (event: MouseEventAction | 'error', listener: (event: MouseEvent) => void): EventEmitter => {
-    return this.emitter.on(event, listener);
+  public on = <T extends MouseEventAction | 'error'>(
+    event: T,
+    listener: T extends 'error' ? (error: Error) => void : ListenerFor<T>,
+  ): EventEmitter => {
+    return this.emitter.on(event, listener as Parameters<typeof this.emitter.on>[1]);
   };
 
   /**
    * Removes a listener for a specific mouse event.
+   *
+   * **Type Inference:**
+   * This method uses the same type inference as `on()` to ensure type safety when removing listeners.
+   *
    * @param event The name of the event to stop listening for.
    * @param listener The callback function to remove.
    * @returns The event emitter instance.
+   * @see {@link on} to add a listener
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * const handler = (event: EventByAction<'press'>) => {
+   *   console.log(`Pressed at ${event.x}, ${event.y}`);
+   * };
+   *
+   * mouse.on('press', handler);
+   * mouse.off('press', handler);
+   * ```
    */
-  public off = (event: MouseEventAction | 'error', listener: (event: MouseEvent) => void): EventEmitter => {
-    return this.emitter.off(event, listener);
+  public off = <T extends MouseEventAction | 'error'>(
+    event: T,
+    listener: T extends 'error' ? (error: Error) => void : ListenerFor<T>,
+  ): EventEmitter => {
+    return this.emitter.off(event, listener as Parameters<typeof this.emitter.off>[1]);
   };
 
   /**

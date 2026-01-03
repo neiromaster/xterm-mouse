@@ -115,6 +115,37 @@ process.stdin.on('data', (data) => {
 });
 ```
 
+#### TypeScript Type Inference
+
+The library provides advanced TypeScript type inference for event handlers. The `on()` and `off()` methods automatically infer the correct event type based on the event name:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse();
+mouse.enable();
+
+// TypeScript knows event.button is 'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'
+mouse.on('wheel', (event) => {
+  console.log(event.button); // Type: 'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'
+});
+
+// TypeScript knows event.button is 'none'
+mouse.on('move', (event) => {
+  console.log(event.button); // Type: 'none'
+});
+
+// TypeScript knows event.button excludes wheel buttons
+mouse.on('drag', (event) => {
+  console.log(event.button); // Type: 'left' | 'middle' | 'right' | 'back' | 'forward'
+});
+```
+
+This type inference improves developer experience by:
+- **Better IntelliSense**: Autocomplete shows only valid button types for each event
+- **Early Error Detection**: TypeScript catches type mismatches at compile time
+- **Self-Documenting Code**: Event types are clear from the handler signature
+
 #### Streaming API Usage
 
 ```typescript
