@@ -2236,3 +2236,311 @@ test('Mouse with threshold 500 should emit click when distance is within 500 cel
   // Cleanup
   mouse.destroy();
 });
+
+// ========== Garbage Collection Cleanup Tests ==========
+
+// Helper to check if --expose-gc flag is available
+const gcEnabled = typeof global.gc !== 'undefined';
+
+test('Mouse should handle garbage collection cleanup', async () => {
+  if (!gcEnabled) {
+    console.log('Skipping test: --expose-gc flag not set. Run with: bun test --expose-gc');
+    return;
+  }
+
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const attachSpy = mock(() => {});
+  const detachSpy = mock(() => {});
+
+  // Track listener attachments
+  const originalOn = stream.on.bind(stream);
+  stream.on = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') attachSpy();
+    return originalOn(event, listener);
+  }) as typeof stream.on;
+
+  const originalOff = stream.off.bind(stream);
+  stream.off = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') detachSpy();
+    return originalOff(event, listener);
+  }) as typeof stream.off;
+
+  // Act: Create Mouse instance, enable it, then lose reference
+  {
+    const mouse = new Mouse(stream);
+    mouse.enable();
+    expect(attachSpy).toHaveBeenCalled();
+    expect(detachSpy).not.toHaveBeenCalled();
+    // Mouse instance goes out of scope here
+  }
+
+  // Force garbage collection
+  global.gc?.();
+
+  // Give FinalizationRegistry callback time to execute
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Assert: FinalizationRegistry should have cleaned up the listener
+  expect(detachSpy).toHaveBeenCalledTimes(1);
+});
+
+test('Mouse should handle GC correctly when explicitly disabled before collection', async () => {
+  if (!gcEnabled) {
+    console.log('Skipping test: --expose-gc flag not set. Run with: bun test --expose-gc');
+    return;
+  }
+
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const attachSpy = mock(() => {});
+  const detachSpy = mock(() => {});
+
+  const originalOn = stream.on.bind(stream);
+  stream.on = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') attachSpy();
+    return originalOn(event, listener);
+  }) as typeof stream.on;
+
+  const originalOff = stream.off.bind(stream);
+  stream.off = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') detachSpy();
+    return originalOff(event, listener);
+  }) as typeof stream.off;
+
+  // Act: Create Mouse instance, enable, then explicitly disable
+  {
+    const mouse = new Mouse(stream);
+    mouse.enable();
+    mouse.disable();
+    expect(attachSpy).toHaveBeenCalled();
+    expect(detachSpy).toHaveBeenCalledTimes(1);
+    // Mouse instance goes out of scope here
+  }
+
+  // Force garbage collection
+  global.gc?.();
+
+  // Give FinalizationRegistry callback time to execute
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Assert: detachSpy should still be 1 (no additional GC cleanup)
+  expect(detachSpy).toHaveBeenCalledTimes(1);
+});
+
+test('Mouse.disable() should be idempotent and safe to call multiple times', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+
+  // Act: Enable and disable multiple times
+  mouse.enable();
+  mouse.disable();
+  mouse.disable();
+  mouse.disable();
+
+  // Assert: Should not throw any errors
+  expect(mouse.isEnabled()).toBe(false);
+  mouse.destroy();
+});
+
+test('Mouse should handle multiple enable/disable cycles with FinalizationRegistry', async () => {
+  if (!gcEnabled) {
+    console.log('Skipping test: --expose-gc flag not set. Run with: bun test --expose-gc');
+    return;
+  }
+
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const attachSpy = mock(() => {});
+  const detachSpy = mock(() => {});
+
+  const originalOn = stream.on.bind(stream);
+  stream.on = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') attachSpy();
+    return originalOn(event, listener);
+  }) as typeof stream.on;
+
+  const originalOff = stream.off.bind(stream);
+  stream.off = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') detachSpy();
+    return originalOff(event, listener);
+  }) as typeof stream.off;
+
+  // Act: Multiple enable/disable cycles
+  const mouse = new Mouse(stream);
+  mouse.enable();
+  mouse.disable();
+  mouse.enable();
+  mouse.disable();
+  mouse.enable();
+  mouse.disable();
+
+  // Assert: Should have 3 attaches and 3 detaches
+  expect(attachSpy).toHaveBeenCalledTimes(3);
+  expect(detachSpy).toHaveBeenCalledTimes(3);
+
+  // Now lose reference and GC
+  const weakRef = new WeakRef(mouse);
+  const mouseRef = mouse; // Keep reference to prevent early GC
+  mouseRef.destroy(); // Explicit destroy
+
+  // Force garbage collection
+  global.gc?.();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Assert: detachSpy should still be 3 (no additional GC cleanup)
+  expect(detachSpy).toHaveBeenCalledTimes(3);
+  expect(weakRef.deref()).toBeDefined();
+});
+
+test('Mouse.disable() when not enabled should be safe', () => {
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const mouse = new Mouse(stream);
+
+  // Act & Assert: Disable without ever enabling should not throw
+  mouse.disable();
+  mouse.disable();
+
+  expect(mouse.isEnabled()).toBe(false);
+  mouse.destroy();
+});
+
+test('Multiple Mouse instances should be garbage collected independently', async () => {
+  if (!gcEnabled) {
+    console.log('Skipping test: --expose-gc flag not set. Run with: bun test --expose-gc');
+    return;
+  }
+
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const attachSpy = mock(() => {});
+  const detachSpy = mock(() => {});
+
+  const originalOn = stream.on.bind(stream);
+  stream.on = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') attachSpy();
+    return originalOn(event, listener);
+  }) as typeof stream.on;
+
+  const originalOff = stream.off.bind(stream);
+  stream.off = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') detachSpy();
+    return originalOff(event, listener);
+  }) as typeof stream.off;
+
+  // Act: Create multiple Mouse instances, enable each, lose all references
+  const weakRefs: WeakRef<Mouse>[] = [];
+  {
+    const mouse1 = new Mouse(stream);
+    const mouse2 = new Mouse(stream);
+    const mouse3 = new Mouse(stream);
+
+    weakRefs.push(new WeakRef(mouse1));
+    weakRefs.push(new WeakRef(mouse2));
+    weakRefs.push(new WeakRef(mouse3));
+
+    mouse1.enable();
+    mouse2.enable();
+    mouse3.enable();
+
+    expect(attachSpy).toHaveBeenCalledTimes(3);
+
+    // All instances go out of scope here
+  }
+
+  // Force garbage collection
+  global.gc?.();
+
+  // Give FinalizationRegistry callbacks time to execute
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Assert: All 3 instances should be cleaned up
+  expect(detachSpy).toHaveBeenCalledTimes(3);
+  const ref1 = weakRefs[0]?.deref();
+  const ref2 = weakRefs[1]?.deref();
+  const ref3 = weakRefs[2]?.deref();
+  expect(ref1).toBeUndefined();
+  expect(ref2).toBeUndefined();
+  expect(ref3).toBeUndefined();
+});
+
+test('Mouse.destroy() should work correctly with FinalizationRegistry', async () => {
+  if (!gcEnabled) {
+    console.log('Skipping test: --expose-gc flag not set. Run with: bun test --expose-gc');
+    return;
+  }
+
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const attachSpy = mock(() => {});
+  const detachSpy = mock(() => {});
+
+  const originalOn = stream.on.bind(stream);
+  stream.on = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') attachSpy();
+    return originalOn(event, listener);
+  }) as typeof stream.on;
+
+  const originalOff = stream.off.bind(stream);
+  stream.off = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') detachSpy();
+    return originalOff(event, listener);
+  }) as typeof stream.off;
+
+  // Act: Create Mouse instance, enable, then explicitly destroy
+  const weakRef: WeakRef<Mouse> = new WeakRef(
+    (() => {
+      const mouse = new Mouse(stream);
+      mouse.enable();
+      mouse.destroy();
+      return mouse;
+    })(),
+  );
+
+  // Force garbage collection
+  global.gc?.();
+
+  // Give FinalizationRegistry callback time to execute
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Assert: detachSpy should be 1 (from destroy(), no additional GC cleanup)
+  expect(detachSpy).toHaveBeenCalledTimes(1);
+  expect(weakRef.deref()).toBeDefined();
+});
+
+test('Mouse.destroy() should be idempotent with FinalizationRegistry', async () => {
+  if (!gcEnabled) {
+    console.log('Skipping test: --expose-gc flag not set. Run with: bun test --expose-gc');
+    return;
+  }
+
+  // Arrange
+  const stream = makeFakeTTYStream();
+  const attachSpy = mock(() => {});
+  const detachSpy = mock(() => {});
+
+  const originalOn = stream.on.bind(stream);
+  stream.on = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') attachSpy();
+    return originalOn(event, listener);
+  }) as typeof stream.on;
+
+  const originalOff = stream.off.bind(stream);
+  stream.off = ((event: string, listener: (...args: unknown[]) => void) => {
+    if (event === 'data') detachSpy();
+    return originalOff(event, listener);
+  }) as typeof stream.off;
+
+  // Act: Create Mouse instance, enable, then destroy multiple times
+  const mouse = new Mouse(stream);
+  mouse.enable();
+  mouse.destroy();
+  mouse.destroy();
+  mouse.destroy();
+
+  // Assert: Should only detach once
+  expect(attachSpy).toHaveBeenCalledTimes(1);
+  expect(detachSpy).toHaveBeenCalledTimes(1);
+});

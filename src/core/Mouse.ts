@@ -10,8 +10,68 @@ import {
 } from '../types';
 
 /**
+ * FinalizationRegistry for automatic cleanup of Mouse instances.
+ *
+ * When a Mouse instance is garbage collected without explicit cleanup,
+ * this registry ensures that:
+ * - The stdin 'data' event listener is removed
+ * - The input stream state is restored (raw mode disabled, stream paused)
+ * - ANSI disable codes are sent to the terminal
+ *
+ * This prevents memory leaks from accumulated event listeners when Mouse instances
+ * are not properly destroyed.
+ */
+const mouseCleanupRegistry: FinalizationRegistry<{
+  inputStream: ReadableStreamWithEncoding;
+  handleEvent: (data: Buffer) => void;
+  outputStream: NodeJS.WriteStream;
+  previousRawMode: boolean | null;
+  isRaw: boolean | null;
+}> = new FinalizationRegistry(
+  (heldValue: {
+    inputStream: ReadableStreamWithEncoding;
+    handleEvent: (data: Buffer) => void;
+    outputStream: NodeJS.WriteStream;
+    previousRawMode: boolean | null;
+    isRaw: boolean | null;
+  }) => {
+    try {
+      heldValue.inputStream.off('data', heldValue.handleEvent);
+    } catch {
+      // Ignore errors during GC cleanup
+    }
+
+    try {
+      if (heldValue.isRaw) {
+        heldValue.inputStream.setRawMode(false);
+      }
+      heldValue.inputStream.pause();
+    } catch {
+      // Ignore errors during GC cleanup
+    }
+
+    try {
+      heldValue.outputStream.write(
+        ANSI_CODES.mouseSGR.off + ANSI_CODES.mouseMotion.off + ANSI_CODES.mouseDrag.off + ANSI_CODES.mouseButton.off,
+      );
+    } catch {
+      // Ignore errors during GC cleanup
+    }
+  },
+);
+
+/**
  * Represents and manages mouse events in a TTY environment.
  * It captures mouse events by controlling the input stream and parsing ANSI escape codes.
+ *
+ * **Automatic Cleanup:**
+ * Mouse instances automatically register for cleanup when `enable()` is called.
+ * If a Mouse instance is garbage collected without explicit cleanup via `disable()` or `destroy()`,
+ * the FinalizationRegistry ensures that stdin event listeners are removed to prevent memory leaks.
+ *
+ * **Recommended Cleanup:**
+ * Despite automatic cleanup, it's still recommended to explicitly call `destroy()` when done
+ * with a Mouse instance for immediate and predictable resource release.
  */
 class Mouse {
   private enabled = false;
@@ -20,6 +80,7 @@ class Mouse {
   private previousRawMode: boolean | null = null;
   private lastPress: MouseEvent | null = null;
   private clickDistanceThreshold: number;
+  private cleanupToken: { instance: Mouse } | null = null;
 
   /**
    * Constructs a new Mouse instance.
@@ -103,16 +164,25 @@ class Mouse {
    * - The stream cannot be put into raw mode
    * - The terminal does not support the mouse tracking ANSI codes
    *
+   * **Automatic Cleanup:**
+   * When `enable()` is called, the Mouse instance registers with a FinalizationRegistry.
+   * If the instance is garbage collected without explicit cleanup via `disable()` or `destroy()`,
+   * the registry will automatically remove the stdin listener and restore stream state to prevent
+   * memory leaks. This is a safety net - explicit cleanup via `destroy()` is still recommended
+   * for immediate and predictable resource release.
+   *
    * **Side Effects:**
    * - The input stream is switched to raw mode (character-by-character input)
    * - The input encoding is set to UTF-8
    * - The input stream is resumed if paused
    * - ANSI escape codes are written to the output stream to enable mouse tracking
    * - The original stream settings are preserved for restoration on `disable()`
+   * - The Mouse instance is registered with the FinalizationRegistry for automatic cleanup
    *
    * @throws {Error} If the input stream is not a TTY
    * @throws {MouseError} If enabling mouse tracking fails
    * @see {@link disable} to disable tracking and restore the stream
+   * @see {@link destroy} for recommended cleanup method
    *
    * @example
    * ```ts
@@ -151,6 +221,19 @@ class Mouse {
       this.inputStream.setEncoding('utf8');
       this.inputStream.resume();
       this.inputStream.on('data', this.handleEvent);
+
+      this.cleanupToken = { instance: this };
+      mouseCleanupRegistry.register(
+        this,
+        {
+          inputStream: this.inputStream,
+          handleEvent: this.handleEvent,
+          outputStream: this.outputStream,
+          previousRawMode: this.previousRawMode,
+          isRaw: this.inputStream.isRaw ?? false,
+        },
+        this.cleanupToken,
+      );
     } catch (err) {
       this.enabled = false;
       throw new MouseError(
@@ -171,6 +254,12 @@ class Mouse {
     }
 
     try {
+      // Unregister from FinalizationRegistry before cleanup
+      if (this.cleanupToken) {
+        mouseCleanupRegistry.unregister(this.cleanupToken);
+        this.cleanupToken = null;
+      }
+
       this.inputStream.off('data', this.handleEvent);
       this.inputStream.pause();
 
@@ -738,10 +827,43 @@ class Mouse {
 
   /**
    * Disables mouse tracking and removes all event listeners.
-   * This is a cleanup method to ensure no resources are left hanging.
+   *
+   * **Recommended for Immediate Cleanup:**
+   * This method is the recommended way to clean up a Mouse instance when you're done with it.
+   * While automatic cleanup via FinalizationRegistry prevents memory leaks on garbage collection,
+   * calling `destroy()` explicitly ensures immediate and predictable resource release with
+   * no dependency on GC timing.
+   *
+   * **Idempotent:** Calling this method multiple times is safe and has no additional effect.
+   *
+   * **Side Effects:**
+   * - Calls `disable()` to stop mouse tracking and restore stream state
+   * - Unregisters from the FinalizationRegistry to prevent duplicate cleanup
+   * - Removes all event listeners from the internal event emitter
+   * - Sets the Mouse instance to a non-functional state
+   *
+   * @see {@link disable} to disable mouse tracking without removing event listeners
+   * @see {@link enable} to enable mouse tracking
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // ... use mouse instance ...
+   *
+   * // Always destroy when done for immediate cleanup
+   * mouse.destroy();
+   * ```
    */
   public destroy(): void {
     this.disable();
+
+    if (this.cleanupToken) {
+      mouseCleanupRegistry.unregister(this.cleanupToken);
+      this.cleanupToken = null;
+    }
+
     this.emitter.removeAllListeners();
   }
 }
