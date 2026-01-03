@@ -329,6 +329,91 @@ const mouse = new Mouse(process.stdin, process.stdout, undefined, {
 });
 ```
 
+### Convenience Methods
+
+For common interaction patterns, the library provides promise-based helper methods that wrap the streaming API into simpler, more convenient functions.
+
+#### waitForClick()
+
+Wait for a single click event:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse();
+mouse.enable();
+
+try {
+  const click = await mouse.waitForClick();
+  console.log(`Clicked at ${click.x}, ${click.y} with ${click.button}`);
+} finally {
+  mouse.disable();
+}
+```
+
+With custom timeout:
+
+```typescript
+const click = await mouse.waitForClick({ timeout: 5000 });
+```
+
+With cancellation:
+
+```typescript
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 1000);
+
+try {
+  const click = await mouse.waitForClick({ signal: controller.signal });
+} catch (err) {
+  if (err.message.includes('aborted')) {
+    console.log('Wait cancelled');
+  }
+}
+```
+
+#### waitForInput()
+
+Wait for any mouse input event (press, release, click, drag, wheel, or move):
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse();
+mouse.enable();
+
+console.log('Move mouse or click to continue...');
+const event = await mouse.waitForInput();
+console.log(`Got ${event.action} at ${event.x}, ${event.y}`);
+
+mouse.disable();
+```
+
+This is useful for "press any key to continue" style interactions, but with mouse events instead.
+
+#### getMousePosition()
+
+Wait for a mouse move event and return the current position:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse();
+mouse.enable();
+
+console.log('Move mouse to desired position...');
+const { x, y } = await mouse.getMousePosition();
+console.log(`Selected position: ${x}, ${y}`);
+
+mouse.disable();
+```
+
+With custom timeout:
+
+```typescript
+const { x, y } = await mouse.getMousePosition({ timeout: 5000 });
+```
+
 ## Troubleshooting
 
 ### Mouse events not working

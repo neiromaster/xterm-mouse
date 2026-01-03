@@ -1062,6 +1062,273 @@ class Mouse {
 
     this.emitter.removeAllListeners();
   }
+
+  /**
+   * Waits for a single click event and returns it.
+   *
+   * This is a convenience method that wraps the streaming API into a simple promise-based helper.
+   * It's useful for common interaction patterns like "wait for user to click anywhere".
+   *
+   * **Timeout:** The method will reject with a `MouseError` if the timeout is exceeded.
+   *
+   * **Cancellation:** The method can be cancelled early using an AbortSignal.
+   *
+   * @param options Configuration options for the wait operation.
+   * @param options.timeout Maximum time to wait in milliseconds. Defaults to 30000 (30 seconds).
+   * @param options.signal An AbortSignal to cancel the operation early.
+   * @returns A promise that resolves with the click event.
+   * @throws {MouseError} If timeout is exceeded or operation is aborted.
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * try {
+   *   const click = await mouse.waitForClick();
+   *   console.log(`Clicked at ${click.x}, ${click.y} with ${click.button}`);
+   * } catch (err) {
+   *   if (err instanceof MouseError) {
+   *     console.error('Timeout or error:', err.message);
+   *   }
+   * } finally {
+   *   mouse.disable();
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Wait with custom timeout
+   * const click = await mouse.waitForClick({ timeout: 5000 });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Cancel with AbortController
+   * const controller = new AbortController();
+   * setTimeout(() => controller.abort(), 1000);
+   *
+   * try {
+   *   const click = await mouse.waitForClick({ signal: controller.signal });
+   * } catch (err) {
+   *   if (err instanceof MouseError && err.message.includes('aborted')) {
+   *     console.log('Wait cancelled');
+   *   }
+   * }
+   * ```
+   */
+  public async waitForClick({
+    timeout = 30000,
+    signal,
+  }: {
+    timeout?: number;
+    signal?: AbortSignal;
+  } = {}): Promise<MouseEvent> {
+    if (signal?.aborted) {
+      throw new MouseError('The operation was aborted.');
+    }
+
+    return new Promise<MouseEvent>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new MouseError(`Timeout waiting for click after ${timeout}ms`));
+      }, timeout);
+
+      const abortHandler = (): void => {
+        cleanup();
+        reject(new MouseError('The operation was aborted.'));
+      };
+
+      const clickHandler = (event: MouseEvent): void => {
+        cleanup();
+        resolve(event);
+      };
+
+      const cleanup = (): void => {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', abortHandler);
+        this.emitter.off('click', clickHandler);
+      };
+
+      signal?.addEventListener('abort', abortHandler);
+      this.emitter.on('click', clickHandler);
+    });
+  }
+
+  /**
+   * Waits for any mouse input event and returns it.
+   *
+   * This is a convenience method that waits for any mouse event (press, release, click,
+   * drag, wheel, or move). Useful for "wait for any user interaction" patterns.
+   *
+   * **Timeout:** The method will reject with a `MouseError` if the timeout is exceeded.
+   *
+   * **Cancellation:** The method can be cancelled early using an AbortSignal.
+   *
+   * @param options Configuration options for the wait operation.
+   * @param options.timeout Maximum time to wait in milliseconds. Defaults to 30000 (30 seconds).
+   * @param options.signal An AbortSignal to cancel the operation early.
+   * @returns A promise that resolves with the first mouse event received.
+   * @throws {MouseError} If timeout is exceeded or operation is aborted.
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * try {
+   *   const event = await mouse.waitForInput();
+   *   console.log(`Got ${event.action} at ${event.x}, ${event.y}`);
+   * } catch (err) {
+   *   if (err instanceof MouseError) {
+   *     console.error('Timeout or error:', err.message);
+   *   }
+   * } finally {
+   *   mouse.disable();
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Wait with custom timeout
+   * const event = await mouse.waitForInput({ timeout: 5000 });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Use for "press any key to continue" style interaction
+   * console.log('Move mouse or click to continue...');
+   * await mouse.waitForInput();
+   * console.log('Continuing...');
+   * ```
+   */
+  public async waitForInput({
+    timeout = 30000,
+    signal,
+  }: {
+    timeout?: number;
+    signal?: AbortSignal;
+  } = {}): Promise<MouseEvent> {
+    if (signal?.aborted) {
+      throw new MouseError('The operation was aborted.');
+    }
+
+    return new Promise<MouseEvent>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new MouseError(`Timeout waiting for input after ${timeout}ms`));
+      }, timeout);
+
+      const abortHandler = (): void => {
+        cleanup();
+        reject(new MouseError('The operation was aborted.'));
+      };
+
+      const allEvents: MouseEventAction[] = ['press', 'release', 'drag', 'wheel', 'move', 'click'];
+
+      const inputHandler =
+        (_action: MouseEventAction) =>
+        (event: MouseEvent): void => {
+          cleanup();
+          resolve(event);
+        };
+
+      const cleanup = (): void => {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', abortHandler);
+        allEvents.forEach((action) => {
+          this.emitter.off(action, inputHandler(action));
+        });
+      };
+
+      signal?.addEventListener('abort', abortHandler);
+      allEvents.forEach((action) => {
+        this.emitter.on(action, inputHandler(action));
+      });
+    });
+  }
+
+  /**
+   * Waits for a mouse move event and returns the current position.
+   *
+   * This is a convenience method for getting the mouse position. It waits for the next
+   * mouse move event and returns the coordinates.
+   *
+   * **Timeout:** The method will reject with a `MouseError` if the timeout is exceeded.
+   *
+   * **Cancellation:** The method can be cancelled early using an AbortSignal.
+   *
+   * @param options Configuration options for the wait operation.
+   * @param options.timeout Maximum time to wait in milliseconds. Defaults to 30000 (30 seconds).
+   * @param options.signal An AbortSignal to cancel the operation early.
+   * @returns A promise that resolves with the x, y coordinates.
+   * @throws {MouseError} If timeout is exceeded or operation is aborted.
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * try {
+   *   const { x, y } = await mouse.getMousePosition();
+   *   console.log(`Mouse is at ${x}, ${y}`);
+   * } finally {
+   *   mouse.disable();
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Prompt user to position mouse
+   * console.log('Move mouse to desired position and press any key...');
+   * await keyboard.waitForKeypress();
+   * const { x, y } = await mouse.getMousePosition();
+   * console.log(`Selected position: ${x}, ${y}`);
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Use with custom timeout
+   * const { x, y } = await mouse.getMousePosition({ timeout: 5000 });
+   * ```
+   */
+  public async getMousePosition({
+    timeout = 30000,
+    signal,
+  }: {
+    timeout?: number;
+    signal?: AbortSignal;
+  } = {}): Promise<{ x: number; y: number }> {
+    if (signal?.aborted) {
+      throw new MouseError('The operation was aborted.');
+    }
+
+    return new Promise<{ x: number; y: number }>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        cleanup();
+        reject(new MouseError(`Timeout waiting for mouse position after ${timeout}ms`));
+      }, timeout);
+
+      const abortHandler = (): void => {
+        cleanup();
+        reject(new MouseError('The operation was aborted.'));
+      };
+
+      const moveHandler = (event: MouseEvent): void => {
+        cleanup();
+        resolve({ x: event.x, y: event.y });
+      };
+
+      const cleanup = (): void => {
+        clearTimeout(timeoutId);
+        signal?.removeEventListener('abort', abortHandler);
+        this.emitter.off('move', moveHandler);
+      };
+
+      signal?.addEventListener('abort', abortHandler);
+      this.emitter.on('move', moveHandler);
+    });
+  }
 }
 
 export { Mouse };

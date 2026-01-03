@@ -2806,3 +2806,404 @@ describe('Mouse.checkSupport()', () => {
     expect(result).toBe(Mouse.SupportCheckResult.OutputNotTTY);
   });
 });
+
+describe('Mouse.waitForClick()', () => {
+  test('should resolve when click event occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const pressEvent = '\x1b[<0;10;20M';
+    const releaseEvent = '\x1b[<0;10;20m';
+
+    mouse.enable();
+
+    // Act - start waiting for click
+    const clickPromise = mouse.waitForClick();
+
+    // Emit press and release to trigger click
+    stream.emit('data', Buffer.from(pressEvent));
+    stream.emit('data', Buffer.from(releaseEvent));
+
+    // Assert
+    const click = await clickPromise;
+    expect(click.action).toBe('click');
+    expect(click.button).toBe('left');
+    expect(click.x).toBe(10);
+    expect(click.y).toBe(20);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should timeout if no click occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+
+    mouse.enable();
+
+    // Act & Assert
+    await expect(mouse.waitForClick({ timeout: 100 })).rejects.toThrow('Timeout waiting for click');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should cancel with AbortSignal', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const controller = new AbortController();
+
+    mouse.enable();
+
+    // Act - start waiting and immediately abort
+    const clickPromise = mouse.waitForClick({ signal: controller.signal });
+    controller.abort();
+
+    // Assert
+    await expect(clickPromise).rejects.toThrow('The operation was aborted');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should cleanup listeners after resolution', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const pressEvent = '\x1b[<0;10;20M';
+    const releaseEvent = '\x1b[<0;10;20m';
+
+    mouse.enable();
+
+    // Act
+    const clickPromise = mouse.waitForClick();
+    stream.emit('data', Buffer.from(pressEvent));
+    stream.emit('data', Buffer.from(releaseEvent));
+    await clickPromise;
+
+    // Emit another click - should not be handled by waitForClick
+    const secondClickSpy = mock(() => {});
+    mouse.on('click', secondClickSpy);
+    stream.emit('data', Buffer.from(pressEvent));
+    stream.emit('data', Buffer.from(releaseEvent));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Assert - the second click should be handled by the new listener, not waitForClick
+    expect(secondClickSpy).toHaveBeenCalled();
+
+    // Cleanup
+    mouse.destroy();
+  });
+});
+
+describe('Mouse.waitForInput()', () => {
+  test('should resolve when press event occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const pressEvent = '\x1b[<0;10;20M';
+
+    mouse.enable();
+
+    // Act
+    const inputPromise = mouse.waitForInput();
+    stream.emit('data', Buffer.from(pressEvent));
+
+    // Assert
+    const event = await inputPromise;
+    expect(event.action).toBe('press');
+    expect(event.button).toBe('left');
+    expect(event.x).toBe(10);
+    expect(event.y).toBe(20);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should resolve when move event occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;15;25M'; // button 35 = move
+
+    mouse.enable();
+
+    // Act
+    const inputPromise = mouse.waitForInput();
+    stream.emit('data', Buffer.from(moveEvent));
+
+    // Assert
+    const event = await inputPromise;
+    expect(event.action).toBe('move');
+    expect(event.x).toBe(15);
+    expect(event.y).toBe(25);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should resolve when wheel event occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const wheelEvent = '\x1b[<64;10;20M'; // button 64 = wheel up
+
+    mouse.enable();
+
+    // Act
+    const inputPromise = mouse.waitForInput();
+    stream.emit('data', Buffer.from(wheelEvent));
+
+    // Assert
+    const event = await inputPromise;
+    expect(event.action).toBe('wheel');
+    expect(event.button).toBe('wheel-up');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should resolve when drag event occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const dragEvent = '\x1b[<32;15;25M'; // button 32 = left button drag
+
+    mouse.enable();
+
+    // Act
+    const inputPromise = mouse.waitForInput();
+    stream.emit('data', Buffer.from(dragEvent));
+
+    // Assert
+    const event = await inputPromise;
+    expect(event.action).toBe('drag');
+    expect(event.button).toBe('left');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should resolve when click event occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const pressEvent = '\x1b[<0;10;20M';
+    const releaseEvent = '\x1b[<0;10;20m';
+
+    mouse.enable();
+
+    // Act
+    const inputPromise = mouse.waitForInput();
+    stream.emit('data', Buffer.from(pressEvent));
+    stream.emit('data', Buffer.from(releaseEvent));
+
+    // Assert - waitForInput might return press, release, or click first
+    const event = await inputPromise;
+    expect(['press', 'release', 'click']).toContain(event.action);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should timeout if no input occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+
+    mouse.enable();
+
+    // Act & Assert
+    await expect(mouse.waitForInput({ timeout: 100 })).rejects.toThrow('Timeout waiting for input');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should cancel with AbortSignal', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const controller = new AbortController();
+
+    mouse.enable();
+
+    // Act - start waiting and immediately abort
+    const inputPromise = mouse.waitForInput({ signal: controller.signal });
+    controller.abort();
+
+    // Assert
+    await expect(inputPromise).rejects.toThrow('The operation was aborted');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should cleanup listeners after resolution', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const pressEvent = '\x1b[<0;10;20M';
+
+    mouse.enable();
+
+    // Act
+    const inputPromise = mouse.waitForInput();
+    stream.emit('data', Buffer.from(pressEvent));
+    await inputPromise;
+
+    // Emit another event - should not be handled by waitForInput
+    const secondPressSpy = mock(() => {});
+    mouse.on('press', secondPressSpy);
+    stream.emit('data', Buffer.from(pressEvent));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Assert - the second press should be handled by the new listener, not waitForInput
+    expect(secondPressSpy).toHaveBeenCalled();
+
+    // Cleanup
+    mouse.destroy();
+  });
+});
+
+describe('Mouse.getMousePosition()', () => {
+  test('should resolve when mouse move occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;42;58M'; // move to x=42, y=58
+
+    mouse.enable();
+
+    // Act
+    const positionPromise = mouse.getMousePosition();
+    stream.emit('data', Buffer.from(moveEvent));
+
+    // Assert
+    const position = await positionPromise;
+    expect(position.x).toBe(42);
+    expect(position.y).toBe(58);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should return correct coordinates for multiple moves', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent1 = '\x1b[<35;10;20M';
+    const moveEvent2 = '\x1b[<35;30;40M';
+
+    mouse.enable();
+
+    // Act & Assert - First position
+    const position1Promise = mouse.getMousePosition();
+    stream.emit('data', Buffer.from(moveEvent1));
+    const position1 = await position1Promise;
+    expect(position1.x).toBe(10);
+    expect(position1.y).toBe(20);
+
+    // Act & Assert - Second position
+    const position2Promise = mouse.getMousePosition();
+    stream.emit('data', Buffer.from(moveEvent2));
+    const position2 = await position2Promise;
+    expect(position2.x).toBe(30);
+    expect(position2.y).toBe(40);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should timeout if no mouse move occurs', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+
+    mouse.enable();
+
+    // Act & Assert
+    await expect(mouse.getMousePosition({ timeout: 100 })).rejects.toThrow('Timeout waiting for mouse position');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should cancel with AbortSignal', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const controller = new AbortController();
+
+    mouse.enable();
+
+    // Act - start waiting and immediately abort
+    const positionPromise = mouse.getMousePosition({ signal: controller.signal });
+    controller.abort();
+
+    // Assert
+    await expect(positionPromise).rejects.toThrow('The operation was aborted');
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should cleanup listeners after resolution', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;10;20M';
+
+    mouse.enable();
+
+    // Act
+    const positionPromise = mouse.getMousePosition();
+    stream.emit('data', Buffer.from(moveEvent));
+    await positionPromise;
+
+    // Emit another move - should not be handled by getMousePosition
+    const secondMoveSpy = mock(() => {});
+    mouse.on('move', secondMoveSpy);
+    stream.emit('data', Buffer.from(moveEvent));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Assert - the second move should be handled by the new listener, not getMousePosition
+    expect(secondMoveSpy).toHaveBeenCalled();
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should ignore non-move events', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const pressEvent = '\x1b[<0;10;20M';
+    const moveEvent = '\x1b[<35;42;58M';
+
+    mouse.enable();
+
+    // Act - start waiting for position, then emit press (should be ignored)
+    const positionPromise = mouse.getMousePosition();
+    stream.emit('data', Buffer.from(pressEvent));
+
+    // Wait a bit to ensure press is processed
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    // Now emit move - should resolve
+    stream.emit('data', Buffer.from(moveEvent));
+
+    // Assert
+    const position = await positionPromise;
+    expect(position.x).toBe(42);
+    expect(position.y).toBe(58);
+
+    // Cleanup
+    mouse.destroy();
+  });
+});

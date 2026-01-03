@@ -11,6 +11,7 @@
 - [Protocol Handling](#protocol-handling)
 - [Event System](#event-system)
 - [Streaming API](#streaming-api)
+- [Promise-Based Helper Methods](#promise-based-helper-methods)
 - [Design Patterns](#design-patterns)
 - [Module Structure](#module-structure)
 
@@ -28,8 +29,9 @@ The xterm-mouse library is structured as a layered architecture that handles ter
 ┌─────────────────────────────────────────────────────────────┐
 │                        Mouse Class                          │
 │  - enable/disable tracking                                  │
-│  - event emission (on/off)                                  │
+│  - event emission (on/off/once)                             │
 │  - streaming API (stream/eventsOf)                          │
+│  - promise helpers (waitForClick/waitForInput/getPosition)  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -62,6 +64,7 @@ The `Mouse` class is the main entry point and orchestrator of the library. It ma
 - **Event Emission**: Wraps Node.js `EventEmitter` for event-based API
 - **Click Detection**: Implements synthetic click event from press + release
 - **Streaming**: Provides async generator APIs for modern async/await patterns
+- **Promise Helpers**: Convenience methods for common interaction patterns
 - **Type-Safe Handlers**: Uses discriminated union types for accurate event type inference
 
 #### Key State
@@ -368,6 +371,39 @@ public once(event, listener) {
 - `wheel` - Scroll wheel rotation
 - `error` - Parsing/handling errors
 
+### Promise-Based Helper API
+
+For common interaction patterns, the library provides three helper methods that return promises:
+
+#### Method Signatures
+
+```typescript
+// Wait for a single click
+waitForClick(options?: { timeout?: number; signal?: AbortSignal }): Promise<MouseEvent>
+
+// Wait for any mouse event
+waitForInput(options?: { timeout?: number; signal?: AbortSignal }): Promise<MouseEvent>
+
+// Get mouse position
+getMousePosition(options?: { timeout?: number; signal?: AbortSignal }): Promise<{ x: number; y: number }>
+```
+
+#### When to Use
+
+| Method               | Use Case                                                    |
+| -------------------- | ----------------------------------------------------------- |
+| `waitForClick()`     | "Wait for user to click" interactions                       |
+| `waitForInput()`     | "Press any key to continue" style interactions              |
+| `getMousePosition()` | Prompting user to position cursor                           |
+
+#### Comparison with Event-Based and Streaming APIs
+
+| API Type               | Complexity | Control Level           | Best For                          |
+| ---------------------- | ---------- | ----------------------- | --------------------------------- |
+| Event-based (`on`)     | Low        | Continuous handling     | Long-running event handlers       |
+| Streaming (`eventsOf`) | Medium     | Pull-based iteration    | Processing sequences of events    |
+| Promise helpers        | Low        | Single-result waiting   | One-time interactions             |
+
 ### Streaming API
 
 #### `eventsOf(type, options)` - Single Event Type Stream
@@ -411,6 +447,112 @@ Similar to `eventsOf()`, but yields wrapped objects:
 ```
 
 Uses a `Map` to register handlers for all event types simultaneously.
+
+### Promise-Based Helper Methods
+
+For common interaction patterns, the library provides three promise-based helper methods that wrap the streaming API into simpler, more convenient functions.
+
+#### `waitForClick({ timeout?, signal? })`
+
+Waits for a single click event and returns the click event.
+
+**Implementation:**
+
+```typescript
+public async waitForClick({
+  timeout = 30000,
+  signal,
+}: { timeout?: number; signal?: AbortSignal } = {}): Promise<MouseEvent> {
+  return new Promise<MouseEvent>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new MouseError(`Timeout waiting for click after ${timeout}ms`));
+    }, timeout);
+
+    const abortHandler = (): void => {
+      cleanup();
+      reject(new MouseError('The operation was aborted.'));
+    };
+
+    const clickHandler = (event: MouseEvent): void => {
+      cleanup();
+      resolve(event);
+    };
+
+    const cleanup = (): void => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', abortHandler);
+      this.emitter.off('click', clickHandler);
+    };
+
+    signal?.addEventListener('abort', abortHandler);
+    this.emitter.on('click', clickHandler);
+  });
+}
+```
+
+**Use Case:** Simple "wait for user to click" interactions without managing event listeners manually.
+
+#### `waitForInput({ timeout?, signal? })`
+
+Waits for any mouse event (press, release, click, drag, wheel, or move) and returns the first event received.
+
+**Implementation:**
+
+```typescript
+public async waitForInput({
+  timeout = 30000,
+  signal,
+}: { timeout?: number; signal?: AbortSignal } = {}): Promise<MouseEvent> {
+  return new Promise<MouseEvent>((resolve, reject) => {
+    // Similar setup to waitForClick
+    const allEvents: MouseEventAction[] = ['press', 'release', 'drag', 'wheel', 'move', 'click'];
+
+    const inputHandler = (action: MouseEventAction) => (event: MouseEvent) => {
+      cleanup();
+      resolve(event);
+    };
+
+    // Register handler for all event types
+    allEvents.forEach((action) => {
+      this.emitter.on(action, inputHandler(action));
+    });
+  });
+}
+```
+
+**Use Case:** "Move mouse or click to continue" style interactions where any mouse input should proceed.
+
+#### `getMousePosition({ timeout?, signal? })`
+
+Waits for a mouse move event and returns only the `{ x, y }` coordinates.
+
+**Implementation:**
+
+```typescript
+public async getMousePosition({
+  timeout = 30000,
+  signal,
+}: { timeout?: number; signal?: AbortSignal } = {}): Promise<{ x: number; y: number }> {
+  return new Promise<{ x: number; y: number }>((resolve, reject) => {
+    const moveHandler = (event: MouseEvent): void => {
+      cleanup();
+      resolve({ x: event.x, y: event.y });
+    };
+
+    this.emitter.on('move', moveHandler);
+  });
+}
+```
+
+**Use Case:** Prompting user to position mouse cursor for UI element placement or selection.
+
+**Common Features:**
+
+- **Automatic Cleanup:** All listeners removed after promise resolution
+- **Timeout Support:** Reject with `MouseError` if timeout exceeded (default: 30s)
+- **AbortSignal Support:** Cancel pending waits by aborting the signal
+- **Type-Safe:** Full TypeScript type inference for returned events
 
 ## Design Patterns
 
