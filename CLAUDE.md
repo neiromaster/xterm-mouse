@@ -46,6 +46,18 @@ bun run dev:streaming     # Run streaming example with hot-reload
 
 ## Architecture Details
 
+### Terminal Capability Detection
+
+The `Mouse` class provides static methods to check terminal support before enabling mouse tracking:
+
+- **`Mouse.isSupported()`**: Returns `true` if both `process.stdin.isTTY` and `process.stdout.isTTY` are true
+- **`Mouse.checkSupport()`**: Returns detailed status from `Mouse.SupportCheckResult` enum:
+  - `Supported` - Terminal supports mouse events
+  - `NotTTY` - Input stream is not a TTY
+  - `OutputNotTTY` - Output stream is not a TTY
+
+This provides better UX than catching exceptions from `enable()` in non-TTY environments (CI, piped input, IDE terminals).
+
 ### Mouse Event Flow
 
 1. `Mouse.enable()` puts stdin in raw mode and sends ANSI codes to enable terminal mouse tracking
@@ -116,5 +128,5 @@ src/
 - Use `bun test` instead of `jest` or `vitest`
 - The library is ESM-only (`"type": "module"` in package.json)
 - Terminal mouse tracking **requires a TTY** - won't work in piped/non-interactive environments
-- Always check `process.stdin.isTTY` before calling `mouse.enable()`
+- **Check support before enabling**: Use `Mouse.isSupported()` or `Mouse.checkSupport()` to verify terminal capabilities before calling `mouse.enable()`
 - The `click` event is synthesized from `press` + `release` events, not directly from the terminal

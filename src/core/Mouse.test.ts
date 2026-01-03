@@ -1,4 +1,4 @@
-import { expect, mock, test } from 'bun:test';
+import { describe, expect, mock, test } from 'bun:test';
 import { EventEmitter } from 'node:events';
 
 import type { MouseEvent, ReadableStreamWithEncoding } from '../types';
@@ -2543,4 +2543,110 @@ test('Mouse.destroy() should be idempotent with FinalizationRegistry', async () 
   // Assert: Should only detach once
   expect(attachSpy).toHaveBeenCalledTimes(1);
   expect(detachSpy).toHaveBeenCalledTimes(1);
+});
+
+describe('Mouse.isSupported()', () => {
+  test('should return true when both stdin and stdout are TTY', () => {
+    // Arrange
+    const originalStdinIsTTY = process.stdin.isTTY;
+    const originalStdoutIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+    // Act
+    const result = Mouse.isSupported();
+
+    // Assert
+    expect(result).toBe(true);
+
+    // Cleanup
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinIsTTY, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, configurable: true });
+  });
+
+  test('should return false when stdin is not a TTY', () => {
+    // Arrange
+    const originalStdinIsTTY = process.stdin.isTTY;
+    const originalStdoutIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+
+    // Act
+    const result = Mouse.isSupported();
+
+    // Assert
+    expect(result).toBe(false);
+
+    // Cleanup
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinIsTTY, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, configurable: true });
+  });
+
+  test('should return false when stdout is not a TTY', () => {
+    // Arrange
+    const originalStdinIsTTY = process.stdin.isTTY;
+    const originalStdoutIsTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: false, configurable: true });
+
+    // Act
+    const result = Mouse.isSupported();
+
+    // Assert
+    expect(result).toBe(false);
+
+    // Cleanup
+    Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinIsTTY, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutIsTTY, configurable: true });
+  });
+});
+
+describe('Mouse.checkSupport()', () => {
+  test('should return Supported when both streams are TTY', () => {
+    // Arrange
+    const inputStream = {
+      isTTY: true,
+    } as unknown as ReadableStreamWithEncoding;
+    const outputStream = {
+      isTTY: true,
+    } as unknown as NodeJS.WriteStream;
+
+    // Act
+    const result = Mouse.checkSupport(inputStream, outputStream);
+
+    // Assert
+    expect(result).toBe(Mouse.SupportCheckResult.Supported);
+  });
+
+  test('should return NotTTY when input stream is not TTY', () => {
+    // Arrange
+    const inputStream = {
+      isTTY: false,
+    } as unknown as ReadableStreamWithEncoding;
+    const outputStream = {
+      isTTY: true,
+    } as unknown as NodeJS.WriteStream;
+
+    // Act
+    const result = Mouse.checkSupport(inputStream, outputStream);
+
+    // Assert
+    expect(result).toBe(Mouse.SupportCheckResult.NotTTY);
+  });
+
+  test('should return OutputNotTTY when output stream is not TTY', () => {
+    // Arrange
+    const inputStream = {
+      isTTY: true,
+    } as unknown as ReadableStreamWithEncoding;
+    const outputStream = {
+      isTTY: false,
+    } as unknown as NodeJS.WriteStream;
+
+    // Act
+    const result = Mouse.checkSupport(inputStream, outputStream);
+
+    // Assert
+    expect(result).toBe(Mouse.SupportCheckResult.OutputNotTTY);
+  });
 });

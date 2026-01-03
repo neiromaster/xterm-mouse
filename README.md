@@ -49,6 +49,33 @@ The event object passed to the event listeners has the following structure:
 
 ## Getting Started
 
+### Checking Terminal Support
+
+Before using mouse tracking, you can check if your terminal supports it:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+// Simple boolean check
+if (Mouse.isSupported()) {
+  console.log('Mouse events are supported!');
+} else {
+  console.log('Mouse events not supported in this environment');
+}
+
+// Detailed check with specific reason
+const result = Mouse.checkSupport();
+if (result === Mouse.SupportCheckResult.Supported) {
+  console.log('Mouse events are supported!');
+} else if (result === Mouse.SupportCheckResult.NotTTY) {
+  console.error('Not running in a terminal');
+} else if (result === Mouse.SupportCheckResult.OutputNotTTY) {
+  console.error('Output is not a terminal');
+}
+```
+
+**Note:** `enable()` will throw an error if called in a non-TTY environment. Using these checks beforehand provides a better user experience.
+
 ### Installation
 
 ```bash

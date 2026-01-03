@@ -117,6 +117,92 @@ class Mouse {
     this.clickDistanceThreshold = this.options?.clickDistanceThreshold ?? 1;
   }
 
+  /**
+   * Result type for terminal capability checks.
+   */
+  static readonly SupportCheckResult = {
+    /** Mouse events are supported */
+    Supported: 'supported',
+    /** Input stream is not a TTY */
+    NotTTY: 'not_tty',
+    /** Output stream is not a TTY */
+    OutputNotTTY: 'output_not_tty',
+  } as const;
+
+  /**
+   * Checks if the current terminal environment supports mouse events.
+   *
+   * This is a convenience method that checks if `process.stdin.isTTY` is true,
+   * which is the primary requirement for mouse event tracking.
+   *
+   * **Use Cases:**
+   * - Before creating a Mouse instance in environments that may not support TTY
+   * - To provide better error messages in CLI tools
+   * - To conditionally enable mouse features in applications
+   *
+   * **Note:** This only checks the default `process.stdin` and `process.stdout`.
+   * If you're using custom streams, use `checkSupport()` instead.
+   *
+   * @returns true if the terminal likely supports mouse events
+   *
+   * @example
+   * ```ts
+   * import { Mouse } from 'xterm-mouse';
+   *
+   * if (Mouse.isSupported()) {
+   *   const mouse = new Mouse();
+   *   mouse.enable();
+   * } else {
+   *   console.log('Mouse events not supported in this environment');
+   * }
+   * ```
+   */
+  static isSupported(): boolean {
+    return process.stdin.isTTY === true && process.stdout.isTTY === true;
+  }
+
+  /**
+   * Performs a detailed check of terminal mouse event support.
+   *
+   * This method provides more information than `isSupported()` by checking
+   * specific streams and returning the reason if support is not available.
+   *
+   * **Use Cases:**
+   * - Need detailed information about why mouse events aren't supported
+   * - Checking custom streams
+   * - Providing user-friendly error messages
+   *
+   * @param inputStream The input stream to check (defaults to process.stdin)
+   * @param outputStream The output stream to check (defaults to process.stdout)
+   * @returns A result from SupportCheckResult indicating support status
+   *
+   * @example
+   * ```ts
+   * import { Mouse } from 'xterm-mouse';
+   *
+   * const result = Mouse.checkSupport();
+   * if (result === Mouse.SupportCheckResult.Supported) {
+   *   console.log('Mouse events are supported!');
+   * } else if (result === Mouse.SupportCheckResult.NotTTY) {
+   *   console.error('Not running in a terminal');
+   * } else if (result === Mouse.SupportCheckResult.OutputNotTTY) {
+   *   console.error('Output is not a terminal');
+   * }
+   * ```
+   */
+  static checkSupport(
+    inputStream: ReadableStreamWithEncoding = process.stdin,
+    outputStream: NodeJS.WriteStream = process.stdout,
+  ): string {
+    if (!inputStream.isTTY) {
+      return Mouse.SupportCheckResult.NotTTY;
+    }
+    if (!outputStream.isTTY) {
+      return Mouse.SupportCheckResult.OutputNotTTY;
+    }
+    return Mouse.SupportCheckResult.Supported;
+  }
+
   private handleEvent = (data: Buffer): void => {
     if (this.paused) {
       return;
