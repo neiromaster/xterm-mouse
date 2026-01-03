@@ -1,0 +1,19 @@
+{
+  "config": {
+    "default": true,
+    "MD013": {
+      "severity": "warning",
+      "line_length": 120,
+      "stern": true
+    },
+    "MD040": {
+      "severity": "warning"
+    },
+    "MD060": {
+      "aligned_delimiter": true
+    }
+  },
+  "ignores": [
+    "node_modules/**"
+  ]
+}

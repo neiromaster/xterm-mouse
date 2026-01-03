@@ -1,4 +1,4 @@
-# xterm-mouse - Bring mouse interaction to your Node.js terminal apps.
+# xterm-mouse - Bring mouse interaction to your Node.js terminal apps
 
 > [!CAUTION]
 > This library is currently in its early stages of development. It is provided "as is" and its use is at your own risk. We welcome contributions! Feel free to open issues or submit pull requests.
@@ -7,10 +7,10 @@ This library provides a simple way to capture and parse mouse events from xterm-
 
 ## Features
 
-*   Captures mouse events (clicks, drags, movements, wheel scrolls).
-*   Supports SGR and ESC mouse protocols.
-*   Provides parsed mouse event data including button, action, coordinates, and modifier keys (Shift, Alt, Ctrl).
-*   Offers a streaming API with `eventsOf` and `stream` methods for asynchronous iteration over mouse events.
+* Captures mouse events (clicks, drags, movements, wheel scrolls).
+* Supports SGR and ESC mouse protocols.
+* Provides parsed mouse event data including button, action, coordinates, and modifier keys (Shift, Alt, Ctrl).
+* Offers a streaming API with `eventsOf` and `stream` methods for asynchronous iteration over mouse events.
 
 ## API
 
@@ -18,12 +18,12 @@ This library provides a simple way to capture and parse mouse events from xterm-
 
 The `Mouse` instance emits the following events:
 
-*   `press`: A mouse button is pressed.
-*   `release`: A mouse button is released.
-*   `click`: A mouse button is pressed and released within a small area.
-*   `wheel`: The mouse wheel is scrolled.
-*   `move`: The mouse is moved.
-*   `drag`: The mouse is moved while a button is pressed.
+* `press`: A mouse button is pressed.
+* `release`: A mouse button is released.
+* `click`: A mouse button is pressed and released within a small area.
+* `wheel`: The mouse wheel is scrolled.
+* `move`: The mouse is moved.
+* `drag`: The mouse is moved while a button is pressed.
 
 ### Event Object Structure
 
@@ -142,9 +142,10 @@ mouse.on('drag', (event) => {
 ```
 
 This type inference improves developer experience by:
-- **Better IntelliSense**: Autocomplete shows only valid button types for each event
-- **Early Error Detection**: TypeScript catches type mismatches at compile time
-- **Self-Documenting Code**: Event types are clear from the handler signature
+
+* **Better IntelliSense**: Autocomplete shows only valid button types for each event
+* **Early Error Detection**: TypeScript catches type mismatches at compile time
+* **Self-Documenting Code**: Event types are clear from the handler signature
 
 ### One-Time Event Listeners
 
@@ -169,6 +170,7 @@ mouse.once('wheel', (event) => {
 ```
 
 **Before** (manual cleanup required):
+
 ```typescript
 const handler = (event) => {
   console.log('Got click', event);
@@ -179,6 +181,7 @@ mouse.on('click', handler);
 ```
 
 **After** (automatic cleanup):
+
 ```typescript
 mouse.once('click', (event) => {
   console.log('Got click', event);
@@ -270,10 +273,10 @@ setTimeout(() => {
 
 The options object also allows you to control the behavior of the event queue:
 
-*   `maxQueue: number` (default: `100`)
+* `maxQueue: number` (default: `100`)
     The maximum number of events to hold in the queue. If the queue is full and a new event arrives, the oldest event is dropped. This prevents memory leaks in scenarios with high event throughput.
 
-*   `latestOnly: boolean` (default: `false`)
+* `latestOnly: boolean` (default: `false`)
     If set to `true`, the queue will only store the most recent event, discarding any previous ones. This is useful when you only care about the latest state (e.g., for mouse position) and not the intermediate events.
 
 ### Configuring Click Detection
@@ -332,37 +335,37 @@ const mouse = new Mouse(process.stdin, process.stdout, undefined, {
 
 If mouse events are not being captured:
 
-*   **Check terminal compatibility**: Ensure your terminal supports xterm mouse tracking. Most modern terminals (iTerm2, GNOME Terminal, Windows Terminal, etc.) support this feature, but it may need to be enabled in terminal settings.
+* **Check terminal compatibility**: Ensure your terminal supports xterm mouse tracking. Most modern terminals (iTerm2, GNOME Terminal, Windows Terminal, etc.) support this feature, but it may need to be enabled in terminal settings.
 
-*   **Verify stdin is in raw mode**: The library automatically sets stdin to raw mode when `enable()` is called. If you're manually manipulating stdin, it may interfere with mouse event capture.
+* **Verify stdin is in raw mode**: The library automatically sets stdin to raw mode when `enable()` is called. If you're manually manipulating stdin, it may interfere with mouse event capture.
 
-*   **Check for conflicting libraries**: Other terminal manipulation libraries (e.g., readline, prompt libraries) may interfere with mouse tracking. Try disabling them to see if mouse events start working.
+* **Check for conflicting libraries**: Other terminal manipulation libraries (e.g., readline, prompt libraries) may interfere with mouse tracking. Try disabling them to see if mouse events start working.
 
 ### Coordinate limitations
 
 If you're experiencing coordinate issues (e.g., coordinates never exceed 95):
 
-*   **ESC protocol limitation**: Your terminal may not support SGR mode. The older ESC protocol limits coordinates to 223 (0-indexed: 222), but some terminals may have further restrictions.
+* **ESC protocol limitation**: Your terminal may not support SGR mode. The older ESC protocol limits coordinates to 223 (0-indexed: 222), but some terminals may have further restrictions.
 
-*   **Terminal window size**: Coordinates are relative to the terminal window size. Ensure you're testing in a terminal with sufficient size.
+* **Terminal window size**: Coordinates are relative to the terminal window size. Ensure you're testing in a terminal with sufficient size.
 
 ### Events not firing
 
 If event listeners are not being triggered:
 
-*   **Verify enable() was called**: Make sure you've called `mouse.enable()` before attempting to capture mouse events.
+* **Verify enable() was called**: Make sure you've called `mouse.enable()` before attempting to capture mouse events.
 
-*   **Check event type**: Ensure you're listening for the correct event type. See the [Mouse Events](#mouse-events) section for available event types.
+* **Check event type**: Ensure you're listening for the correct event type. See the [Mouse Events](#mouse-events) section for available event types.
 
-*   **Process stdin**: Ensure `process.stdin` is not being paused or redirected. The library relies on stdin to receive mouse events.
+* **Process stdin**: Ensure `process.stdin` is not being paused or redirected. The library relies on stdin to receive mouse events.
 
 ### Cleanup issues
 
 If you're experiencing issues with mouse tracking not disabling properly:
 
-*   **Always call disable()**: Ensure you're calling `mouse.disable()` before your program exits. This restores the terminal to its original state.
+* **Always call disable()**: Ensure you're calling `mouse.disable()` before your program exits. This restores the terminal to its original state.
 
-*   **Handle process exit**: Register an exit handler to ensure cleanup:
+* **Handle process exit**: Register an exit handler to ensure cleanup:
 
 ```typescript
 process.on('exit', () => {
@@ -379,17 +382,17 @@ process.on('SIGINT', () => {
 
 If mouse wheel events are not being captured:
 
-*   **Terminal support**: Some terminals may not support wheel events in the default mode. The library attempts to enable wheel tracking, but terminal limitations may prevent this.
+* **Terminal support**: Some terminals may not support wheel events in the default mode. The library attempts to enable wheel tracking, but terminal limitations may prevent this.
 
-*   **Scrolling vs wheel**: Wheel events are distinct from terminal scrolling. Ensure you're actually using the mouse wheel, not the terminal's scrollback feature.
+* **Scrolling vs wheel**: Wheel events are distinct from terminal scrolling. Ensure you're actually using the mouse wheel, not the terminal's scrollback feature.
 
 ### Coordinate offset issues
 
 If mouse coordinates appear offset or incorrect:
 
-*   **Terminal padding**: Some terminals have padding or margins that can affect coordinate calculation. This is a terminal-specific behavior.
+* **Terminal padding**: Some terminals have padding or margins that can affect coordinate calculation. This is a terminal-specific behavior.
 
-*   **Multi-line prompts**: If your application has multi-line output before the mouse interaction area, coordinates will be relative to the entire terminal buffer, not your application's visible area.
+* **Multi-line prompts**: If your application has multi-line output before the mouse interaction area, coordinates will be relative to the entire terminal buffer, not your application's visible area.
 
 ## For Developers
 
@@ -399,10 +402,10 @@ This library is currently in its early stages of development. While efforts are 
 
 ### Available Commands
 
-*   **`bun run build`**: Compiles the TypeScript code into JavaScript and generates type declaration files.
-*   **`bun run lint`**: Runs ESLint and Biome checks to identify code quality issues.
-*   **`bun run format`**: Formats the code using Biome and applies ESLint fixes.
-*   **`bun run lint:fix`**: Applies ESLint fixes to the codebase.
-*   **`bun run biome:check`**: Runs Biome checks and applies unsafe fixes.
-*   **`bun run dev:basic`**: Runs the basic example with hot-reloading.
-*   **`bun run dev:streaming`**: Runs the streaming example with hot-reloading.
+* **`bun run build`**: Compiles the TypeScript code into JavaScript and generates type declaration files.
+* **`bun run lint`**: Runs ESLint and Biome checks to identify code quality issues.
+* **`bun run format`**: Formats the code using Biome and applies ESLint fixes.
+* **`bun run lint:fix`**: Applies ESLint fixes to the codebase.
+* **`bun run biome:check`**: Runs Biome checks and applies unsafe fixes.
+* **`bun run dev:basic`**: Runs the basic example with hot-reloading.
+* **`bun run dev:streaming`**: Runs the streaming example with hot-reloading.

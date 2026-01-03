@@ -21,8 +21,10 @@
   "type": "module",
   "scripts": {
     "build": "tsup",
-    "lint": "biome check . && dprint check",
-    "format": "biome check --write --unsafe . && dprint fmt",
+    "lint": "biome check . && dprint check && markdownlint-cli2 \"**/*.md\"",
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "format": "biome check --write --unsafe . && dprint fmt && markdownlint-cli2 fix \"**/*.md\"",
+    "format:md": "markdownlint-cli2 fix \"**/*.md\"",
     "dev:basic": "bun run --watch examples/basic.ts",
     "dev:streaming": "bun run --watch examples/streaming.ts",
     "test": "bun test",
@@ -34,6 +36,7 @@
     "@types/bun": "latest",
     "dprint": "^0.50.2",
     "lefthook": "^2.0.4",
+    "markdownlint-cli2": "^0.20.0",
     "tsup": "^8.5.1",
     "typescript": "^5"
   },

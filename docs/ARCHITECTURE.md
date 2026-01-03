@@ -75,11 +75,11 @@ private lastPress: MouseEvent | null;       // For click detection
 
 #### Lifecycle Methods
 
-| Method | Purpose |
-|--------|---------|
-| `enable()` | Activates mouse tracking, modifies stream settings |
-| `disable()` | Deactivates tracking, restores original settings |
-| `destroy()` | Full cleanup including all event listeners |
+| Method       | Purpose                                            |
+| ------------ | -------------------------------------------------- |
+| `enable()`   | Activates mouse tracking, modifies stream settings |
+| `disable()`  | Deactivates tracking, restores original settings   |
+| `destroy()`  | Full cleanup including all event listeners         |
 
 ### 2. Parser Layer (`src/parser/`)
 
@@ -189,6 +189,7 @@ type EventTypeFor<T extends MouseEventAction | 'error'> =
 ```
 
 **Benefits:**
+
 - IntelliSense shows only valid button types for each event
 - Compile-time type checking prevents errors
 - Self-documenting code through type signatures
@@ -274,20 +275,21 @@ if (this.lastPress) {
 
 **Button Encoding:**
 
-| Code | Button | Notes |
-|------|--------|-------|
-| 0 | Left | Standard press |
-| 1 | Middle | Standard press |
-| 2 | Right | Standard press |
-| 3 | Release | Button release |
-| 64 | Wheel Up | Scroll up |
-| 65 | Wheel Down | Scroll down |
-| 66 | Wheel Left | Horizontal scroll |
-| 67 | Wheel Right | Horizontal scroll |
-| 128 | Back | Browser back button |
-| 129 | Forward | Browser forward button |
+| Code | Button      | Notes                  |
+| ---- | ----------- | ---------------------- |
+| 0    | Left        | Standard press         |
+| 1    | Middle      | Standard press         |
+| 2    | Right       | Standard press         |
+| 3    | Release     | Button release         |
+| 64   | Wheel Up    | Scroll up              |
+| 65   | Wheel Down  | Scroll down            |
+| 66   | Wheel Left  | Horizontal scroll      |
+| 67   | Wheel Right | Horizontal scroll      |
+| 128  | Back        | Browser back button    |
+| 129  | Forward     | Browser forward button |
 
 **Modifier Bits:**
+
 - Bit 4 (0x10): Ctrl
 - Bit 3 (0x08): Alt
 - Bit 2 (0x04): Shift
@@ -300,6 +302,7 @@ if (this.lastPress) {
 **Format:** `\x1b[Mbxy` (where b, x, y are single bytes + 32)
 
 **Button Encoding:** Uses lower 2 bits for button ID
+
 - Bits 0-1: Button (0=left, 1=middle, 2=right, 3=release)
 - Bit 2: Shift
 - Bit 3: Alt/Meta
@@ -344,6 +347,7 @@ public once(event: MouseEventAction | 'error',
 ```
 
 **Implementation:**
+
 ```typescript
 public once(event, listener) {
   const wrappedListener = (...args) => {
@@ -355,6 +359,7 @@ public once(event, listener) {
 ```
 
 **Emitted Events:**
+
 - `press` - Button pressed
 - `release` - Button released
 - `click` - Press + release within small area (synthetic)
@@ -377,6 +382,7 @@ Returns an async generator yielding events of a specific type.
    - Oldest events dropped when queue is full
 
 2. **Promise-based Coordination:**
+
    ```typescript
    // When event arrives
    if (resolveNext) {
@@ -399,6 +405,7 @@ Returns an async generator yielding events of a specific type.
 #### `stream(options)` - All Events Stream
 
 Similar to `eventsOf()`, but yields wrapped objects:
+
 ```typescript
 { type: MouseEventAction; event: MouseEvent }
 ```
@@ -436,6 +443,7 @@ const wrappedListener = (...args) => {
 ```
 
 **Benefits:**
+
 - Prevents memory leaks from forgotten cleanup
 - Simplifies one-time event handling
 - Follows standard EventEmitter patterns

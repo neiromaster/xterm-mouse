@@ -76,7 +76,7 @@ import { test, expect, describe, mock } from 'bun:test';
 ```
 
 | Function | Purpose |
-|----------|---------|
+| -------- | ------- |
 | `test(name, fn)` | Define a test case |
 | `describe(name, fn)` | Group related tests |
 | `expect(value)` | Assert conditions |
