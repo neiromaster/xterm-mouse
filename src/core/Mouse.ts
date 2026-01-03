@@ -558,6 +558,69 @@ class Mouse {
   };
 
   /**
+   * Registers a one-time listener that automatically removes itself after the first event.
+   *
+   * **Type Inference:**
+   * This method uses the same type inference as `on()` to provide accurate types for the event parameter.
+   *
+   * **Automatic Cleanup:**
+   * The listener is automatically removed after the first invocation, preventing memory leaks
+   * and eliminating the need for manual cleanup code.
+   *
+   * @param event The name of the event to listen for.
+   * @param listener The callback function to execute once when the event is triggered.
+   * @returns The event emitter instance.
+   * @see {@link on} for persistent listeners
+   * @see {@link off} to manually remove listeners
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Listen for a single click
+   * mouse.once('click', (event) => {
+   *   console.log('Got one click!', event);
+   *   // Listener is automatically removed after this execution
+   * });
+   *
+   * // Wait for first wheel event
+   * mouse.once('wheel', (event) => {
+   *   // TypeScript knows event.button is a wheel button type
+   *   console.log(`Scrolled: ${event.button}`);
+   * });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Simplified one-time event handling
+   * // Before (manual cleanup required):
+   * const handler = (event) => {
+   *   console.log('Got click', event);
+   *   mouse.off('click', handler);
+   *   // continue logic...
+   * };
+   * mouse.on('click', handler);
+   *
+   * // After (automatic cleanup):
+   * mouse.once('click', (event) => {
+   *   console.log('Got click', event);
+   *   // continue logic... listener already removed
+   * });
+   * ```
+   */
+  public once = <T extends MouseEventAction | 'error'>(
+    event: T,
+    listener: T extends 'error' ? (error: Error) => void : ListenerFor<T>,
+  ): EventEmitter => {
+    const wrappedListener = (...args: unknown[]): void => {
+      this.emitter.off(event, wrappedListener);
+      (listener as (...args: unknown[]) => void)(...args);
+    };
+    return this.emitter.on(event, wrappedListener as Parameters<typeof this.emitter.on>[1]);
+  };
+
+  /**
    * Returns an async generator that yields mouse events of a specific type.
    *
    * This method provides a convenient way to iterate over mouse events using async/await syntax.

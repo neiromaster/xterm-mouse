@@ -146,6 +146,48 @@ This type inference improves developer experience by:
 - **Early Error Detection**: TypeScript catches type mismatches at compile time
 - **Self-Documenting Code**: Event types are clear from the handler signature
 
+### One-Time Event Listeners
+
+For scenarios where you only need to handle a single event, use the `once()` method. The listener automatically removes itself after the first invocation, preventing memory leaks and eliminating manual cleanup:
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse();
+mouse.enable();
+
+// Wait for a single click
+mouse.once('click', (event) => {
+  console.log('Got one click!', event);
+  // Listener is automatically removed after this execution
+});
+
+// Listen for first wheel event only
+mouse.once('wheel', (event) => {
+  console.log(`Scrolled: ${event.button}`);
+});
+```
+
+**Before** (manual cleanup required):
+```typescript
+const handler = (event) => {
+  console.log('Got click', event);
+  mouse.off('click', handler); // Manual cleanup
+  // continue logic...
+};
+mouse.on('click', handler);
+```
+
+**After** (automatic cleanup):
+```typescript
+mouse.once('click', (event) => {
+  console.log('Got click', event);
+  // continue logic... listener already removed
+});
+```
+
+The `once()` method provides the same type inference as `on()`, so TypeScript knows the exact event type for each event name.
+
 #### Streaming API Usage
 
 ```typescript

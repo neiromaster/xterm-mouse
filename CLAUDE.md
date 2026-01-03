@@ -123,6 +123,30 @@ mouse.on('wheel', (event) => {
 
 Type inference utilities are exported from `src/types/eventHandler.ts` and re-exported from `src/types/index.ts`.
 
+### One-Time Event Listeners
+
+The `Mouse.once()` method provides a convenient way to register listeners that automatically remove themselves after the first invocation:
+
+- **Automatic Cleanup**: Prevents memory leaks from forgotten listener removal
+- **Type-Safe**: Uses the same type inference as `on()` for accurate event types
+- **Pattern**: Follows the standard EventEmitter pattern for one-time listeners
+
+```typescript
+// Wait for single click - no manual cleanup needed
+mouse.once('click', (event) => {
+  console.log('Got one click!', event);
+  // Listener already removed
+});
+
+// Simplified one-time event handling
+mouse.once('wheel', (event) => {
+  // TypeScript knows event.button is wheel button type
+  console.log(`Scrolled: ${event.button}`);
+});
+```
+
+This eliminates the boilerplate of manually calling `off()` after handling one-time events.
+
 ## Code Organization
 
 ```

@@ -549,6 +549,162 @@ test('Mouse should not emit click event if distance is too large', async () => {
   mouse.destroy();
 });
 
+describe('Mouse.once()', () => {
+  test('should call listener only once', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const listenerSpy = mock(() => {});
+
+    // Act
+    mouse.once('click', listenerSpy);
+    mouse.enable();
+
+    // Emit multiple click events
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M')); // press
+    stream.emit('data', Buffer.from('\x1b[<0;10;20m')); // release - triggers click
+    stream.emit('data', Buffer.from('\x1b[<0;15;25M')); // press
+    stream.emit('data', Buffer.from('\x1b[<0;15;25m')); // release - would trigger click
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert
+    expect(listenerSpy).toHaveBeenCalledTimes(1);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should remove listener after first invocation', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const listenerSpy = mock(() => {});
+
+    // Act
+    mouse.once('press', listenerSpy);
+    mouse.enable();
+
+    // Emit two press events
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M'));
+    stream.emit('data', Buffer.from('\x1b[<0;15;25M'));
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert
+    expect(listenerSpy).toHaveBeenCalledTimes(1);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should provide correct type inference for wheel event', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const listenerSpy = mock((event: MouseEvent) => {
+      // Assert - event.button should be a wheel button type
+      expect(['wheel-up', 'wheel-down', 'wheel-left', 'wheel-right']).toContain(event.button);
+    });
+
+    // Act
+    mouse.once('wheel', listenerSpy);
+    mouse.enable();
+
+    stream.emit('data', Buffer.from('\x1b[<64;10;20M')); // wheel-up
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert
+    expect(listenerSpy).toHaveBeenCalledTimes(1);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should provide correct type inference for move event', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const listenerSpy = mock((event: MouseEvent) => {
+      // Assert - event.button should be 'none' for move events
+      expect(event.button).toBe('none');
+    });
+
+    // Act
+    mouse.once('move', listenerSpy);
+    mouse.enable();
+
+    stream.emit('data', Buffer.from('\x1b[<35;10;20M')); // move
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert
+    expect(listenerSpy).toHaveBeenCalledTimes(1);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should handle error events', async () => {
+    // Arrange
+    const emitter = new EventEmitter();
+    const mouse = new Mouse(makeFakeTTYStream(), process.stdout, emitter);
+    const errorSpy = mock(() => {});
+    const testError = new Error('Test error');
+
+    // Act
+    mouse.once('error', errorSpy);
+    emitter.emit('error', testError);
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith(testError);
+
+    // Emit another error - should not be handled by once() listener
+    // Add a catch-all handler to prevent unhandled error
+    const catchAllSpy = mock(() => {});
+    emitter.on('error', catchAllSpy);
+    emitter.emit('error', new Error('Second error'));
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(catchAllSpy).toHaveBeenCalledTimes(1);
+
+    // Cleanup
+    mouse.destroy();
+  });
+
+  test('should not interfere with other listeners', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const onceSpy = mock(() => {});
+    const onSpy = mock(() => {});
+
+    // Act
+    mouse.once('press', onceSpy);
+    mouse.on('press', onSpy);
+    mouse.enable();
+
+    // Emit two press events
+    stream.emit('data', Buffer.from('\x1b[<0;10;20M'));
+    stream.emit('data', Buffer.from('\x1b[<0;15;25M'));
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Assert
+    expect(onceSpy).toHaveBeenCalledTimes(1); // Called only once
+    expect(onSpy).toHaveBeenCalledTimes(2); // Called for each event
+
+    // Cleanup
+    mouse.destroy();
+  });
+});
+
 test('Mouse.stream() should handle errors', async () => {
   // Arrange
   const emitter = new EventEmitter();

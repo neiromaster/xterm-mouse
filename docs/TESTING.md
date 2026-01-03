@@ -26,7 +26,9 @@ src/
 │   ├── ansiParser.ts
 │   └── ansiParser.test.ts # Tests for parser
 └── types/
-    └── index.ts
+    ├── index.ts
+    ├── eventHandler.ts
+    └── eventHandler.test.ts # Tests for type inference utilities
 ```
 
 ## Running Tests
@@ -257,7 +259,32 @@ test('Mouse should not emit click event if distance is too large', async () => {
 });
 ```
 
-### 6. Performance Tests
+### 6. One-Time Event Listener Tests
+
+When testing `once()` methods, verify the listener is called only once:
+
+```typescript
+test('Mouse.once() should call listener only once', async () => {
+  const mouse = new Mouse(makeFakeTTYStream());
+  const listenerSpy = mock(() => {});
+
+  mouse.once('press', listenerSpy);
+  mouse.enable();
+
+  // Emit multiple press events
+  stream.emit('data', Buffer.from('\x1b[<0;10;20M'));
+  stream.emit('data', Buffer.from('\x1b[<0;15;25M'));
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  // Assert: Should only be called once
+  expect(listenerSpy).toHaveBeenCalledTimes(1);
+
+  mouse.destroy();
+});
+```
+
+### 7. Performance Tests
 
 For performance-sensitive code, use thresholds:
 
@@ -287,7 +314,7 @@ test('Mouse.stream() should handle high event volume', async () => {
 }, 15000); // Increase timeout for performance tests
 ```
 
-### 7. AbortSignal Testing
+### 8. AbortSignal Testing
 
 Test cancellable operations:
 

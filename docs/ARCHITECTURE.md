@@ -62,6 +62,7 @@ The `Mouse` class is the main entry point and orchestrator of the library. It ma
 - **Event Emission**: Wraps Node.js `EventEmitter` for event-based API
 - **Click Detection**: Implements synthetic click event from press + release
 - **Streaming**: Provides async generator APIs for modern async/await patterns
+- **Type-Safe Handlers**: Uses discriminated union types for accurate event type inference
 
 #### Key State
 
@@ -121,7 +122,7 @@ ANSI_RESPONSE_PATTERNS = {
 }
 ```
 
-### 3. Type System (`src/types/index.ts`)
+### 3. Type System (`src/types/`)
 
 Defines the TypeScript types used throughout the library.
 
@@ -156,6 +157,41 @@ type SGRMouseEvent = MouseEventBase & { protocol: 'SGR' };
 type ESCMouseEvent = MouseEventBase & { protocol: 'ESC' };
 type MouseEvent = SGRMouseEvent | ESCMouseEvent;
 ```
+
+#### Type Inference Utilities (`src/types/eventHandler.ts`)
+
+Advanced TypeScript utilities for discriminated event handler types:
+
+```typescript
+// Maps event action to specific event type with narrowed button types
+type EventByAction<T extends MouseEventAction> = MouseEventBase & {
+  button: T extends 'wheel'  ? 'wheel-up' | 'wheel-down' | 'wheel-left' | 'wheel-right'
+        : T extends 'move'   ? 'none'
+        : T extends 'drag'   ? Exclude<ButtonType, 'none' | 'wheel-'*>
+        : ButtonType;
+  action: T;
+  protocol: 'SGR' | 'ESC';
+};
+
+// Type-safe event listener with inferred event parameter
+type TypedEventListener<T extends MouseEventAction> =
+  (event: EventByAction<T>) => void;
+
+// Extracts listener type for a given event name
+type ListenerFor<T extends MouseEventAction | 'error'> =
+  T extends MouseEventAction ? TypedEventListener<T>
+  : (error: Error) => void;
+
+// Extracts event type for a given event name
+type EventTypeFor<T extends MouseEventAction | 'error'> =
+  T extends MouseEventAction ? EventByAction<T>
+  : Error;
+```
+
+**Benefits:**
+- IntelliSense shows only valid button types for each event
+- Compile-time type checking prevents errors
+- Self-documenting code through type signatures
 
 ## Data Flow
 
@@ -300,6 +336,24 @@ public on(event: MouseEventAction | 'error',
           listener: (event: MouseEvent) => void): EventEmitter
 ```
 
+The `once()` method provides one-time event listeners that automatically remove themselves after first invocation:
+
+```typescript
+public once(event: MouseEventAction | 'error',
+            listener: (event: MouseEvent) => void): EventEmitter
+```
+
+**Implementation:**
+```typescript
+public once(event, listener) {
+  const wrappedListener = (...args) => {
+    this.emitter.off(event, wrappedListener);  // Auto-remove
+    listener(...args);                          // Then execute
+  };
+  return this.emitter.on(event, wrappedListener);
+}
+```
+
 **Emitted Events:**
 - `press` - Button pressed
 - `release` - Button released
@@ -369,7 +423,24 @@ EventEmitter implementation allows multiple observers for each event type.
 
 Protocol detection and dispatch (SGR vs ESC) acts as a strategy pattern for parsing.
 
-### 5. State Preservation
+### 5. Self-Deregistering Listener Pattern
+
+The `once()` method implements the self-deregistering listener pattern:
+
+```typescript
+// Wrap listener to remove itself after first invocation
+const wrappedListener = (...args) => {
+  this.emitter.off(event, wrappedListener);  // Self-deregister
+  listener(...args);                          // Execute original
+};
+```
+
+**Benefits:**
+- Prevents memory leaks from forgotten cleanup
+- Simplifies one-time event handling
+- Follows standard EventEmitter patterns
+
+### 6. State Preservation
 
 The `enable()` method saves original stream settings (`previousEncoding`, `previousRawMode`) to restore them in `disable()`, ensuring proper cleanup.
 
@@ -386,7 +457,15 @@ src/
 │   ├── constants.ts      # ANSI codes and patterns
 │   └── ansiParser.test.ts
 └── types/
-    └── index.ts          # TypeScript type definitions
+    ├── index.ts          # Type definitions barrel export
+    ├── action.ts         # MouseEventAction type
+    ├── button.ts         # ButtonType union
+    ├── event.ts          # MouseEvent discriminated union
+    ├── eventHandler.ts   # Type inference utilities
+    ├── eventHandler.test.ts  # Type inference tests
+    ├── options.ts        # MouseOptions interface
+    ├── error.ts          # MouseError class
+    └── stream.ts         # ReadableStreamWithEncoding type
 ```
 
 ### Dependencies
