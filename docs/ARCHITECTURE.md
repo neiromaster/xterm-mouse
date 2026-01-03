@@ -30,7 +30,7 @@ The xterm-mouse library is structured as a layered architecture that handles ter
 │                        Mouse Class                          │
 │  - enable/disable tracking                                  │
 │  - event emission (on/off/once)                             │
-│  - streaming API (stream/eventsOf)                          │
+│  - streaming API (stream/eventsOf/debouncedMoveEvents)      │
 │  - promise helpers (waitForClick/waitForInput/getPosition)  │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -447,6 +447,68 @@ Similar to `eventsOf()`, but yields wrapped objects:
 ```
 
 Uses a `Map` to register handlers for all event types simultaneously.
+
+#### `debouncedMoveEvents({ interval?, signal? })` - Debounced Move Stream
+
+Returns an async generator yielding move events at most once per configured time interval. This method provides time-based throttling specifically optimized for smooth animations and performance optimization.
+
+**Implementation Details:**
+
+1. **Debounce Mechanism:**
+
+   ```typescript
+   let latestEvent: MouseEvent | null = null;
+   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+   const scheduleEvent = (ev: MouseEvent): void => {
+     latestEvent = ev;
+
+     // Clear existing timer and restart
+     if (timeoutId !== null) {
+       clearTimeout(timeoutId);
+     }
+
+     // Schedule yield after debounce interval
+     timeoutId = setTimeout(() => {
+       if (latestEvent !== null && resolveNext !== null) {
+         const eventToYield = latestEvent;
+         latestEvent = null;
+         resolveNext(eventToYield);
+       }
+     }, interval);
+   };
+   ```
+
+2. **Event Collection:**
+   - Only `move` events are collected (other event types ignored)
+   - Latest event overwrites previous events during debounce period
+   - Timer restarts on each new move event
+
+3. **Yield Strategy:**
+   - Event yielded only after debounce interval elapses without new events
+   - Default interval: 16ms (~60fps) for smooth animations
+   - Configurable interval for different frame rates
+
+4. **AbortSignal Support:**
+   - Clears pending timeout on abort
+   - Rejects current iteration promise
+   - Removes event listeners
+
+**Use Cases:**
+
+- **UI Animation**: Update cursor/element positions at consistent frame rate
+- **Position Tracking**: Get latest mouse position without processing all intermediate events
+- **Performance**: Reduce CPU usage for high-frequency move events
+- **Smooth Drag**: Track drag operations without excessive redraws
+
+**Comparison with `eventsOf('move')`:**
+
+| Feature      | `eventsOf('move')`  | `debouncedMoveEvents()`       |
+| ------------ | ------------------- | ----------------------------- |
+| Event Rate   | Every move event    | At most once per interval     |
+| CPU Usage    | High (hundreds/sec) | Controlled (60fps by default) |
+| Use Case     | Precise tracking    | Smooth animations             |
+| Latest State | Queues all events   | Keeps only latest             |
 
 ### Promise-Based Helper Methods
 

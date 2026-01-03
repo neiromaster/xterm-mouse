@@ -10,7 +10,8 @@ This library provides a simple way to capture and parse mouse events from xterm-
 * Captures mouse events (clicks, drags, movements, wheel scrolls).
 * Supports SGR and ESC mouse protocols.
 * Provides parsed mouse event data including button, action, coordinates, and modifier keys (Shift, Alt, Ctrl).
-* Offers a streaming API with `eventsOf` and `stream` methods for asynchronous iteration over mouse events.
+* Offers a streaming API with `eventsOf`, `stream`, and `debouncedMoveEvents` methods for asynchronous iteration over mouse events.
+* Includes debounced move event streaming for smooth animations and performance optimization.
 
 ## API
 
@@ -286,6 +287,89 @@ const main = async (): Promise<void> => {
 };
 
 main().catch(console.error);
+```
+
+#### Debounced Move Events
+
+For smooth animations and performance optimization, use the `debouncedMoveEvents()` method to receive move events at a controlled rate. Unlike `eventsOf('move')` which yields every move event, `debouncedMoveEvents()` waits for a quiet period before emitting, ensuring you only get events at a controlled rate.
+
+```typescript
+import { Mouse } from '@neiropacks/xterm-mouse';
+
+const mouse = new Mouse();
+
+const main = async (): Promise<void> => {
+  console.log('Enable mouse events...');
+  mouse.enable();
+
+  console.log('Tracking mouse position at 60fps. Press \'q\' to stop.');
+
+  // Track mouse position with debouncing (~60fps by default)
+  for await (const event of mouse.debouncedMoveEvents()) {
+    console.log(`Mouse position: x=${event.x}, y=${event.y}`);
+  }
+};
+
+main().catch(console.error);
+
+process.stdin.on('data', (data) => {
+  if (data.toString() === 'q') {
+    mouse.disable();
+    process.exit(0);
+  }
+});
+```
+
+**Use Cases:**
+
+* **Smooth animations**: Update UI at a consistent frame rate without excessive redraws
+* **Position tracking**: Get the latest mouse position without processing every intermediate event
+* **Performance optimization**: Reduce event handling overhead for high-frequency move events
+
+**Configuration:**
+
+```typescript
+// Custom interval (30fps for less frequent updates)
+for await (const event of mouse.debouncedMoveEvents({ interval: 33 })) {
+  updateUI(event.x, event.y);
+}
+
+// With cancellation
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 10000);
+
+try {
+  for await (const event of mouse.debouncedMoveEvents({ signal: controller.signal })) {
+    renderFrame(event.x, event.y);
+  }
+} catch (err) {
+  if (err.message.includes('aborted')) {
+    console.log('Tracking stopped');
+  }
+}
+```
+
+**Debouncing Behavior:**
+
+* Move events are collected during the debounce interval
+* Only the most recent event is yielded after the interval elapses
+* If the mouse continues moving, the timer restarts with each new event
+* Default interval is 16ms (~60fps) for smooth animations
+
+**Comparison: Raw vs Debounced:**
+
+```typescript
+// Raw: Can fire hundreds of times per second
+for await (const event of mouse.eventsOf('move')) {
+  console.log('Raw move'); // May print too fast to read
+  if (event.x > 50) break;
+}
+
+// Debounced: Controlled rate, easier to process
+for await (const event of mouse.debouncedMoveEvents({ interval: 100 })) {
+  console.log('Debounced move'); // Prints at most 10 times per second
+  if (event.x > 50) break;
+}
 ```
 
 ### Advanced Async Iterator Control

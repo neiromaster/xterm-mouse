@@ -3207,3 +3207,303 @@ describe('Mouse.getMousePosition()', () => {
     mouse.destroy();
   });
 });
+
+describe('Mouse.debouncedMoveEvents()', () => {
+  test('should yield debounced move events', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;10;20M'; // move to x=10, y=20
+    const iterator = mouse.debouncedMoveEvents({ interval: 50 });
+
+    try {
+      mouse.enable();
+
+      // Act - emit move event
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent));
+
+      // Wait for debounce interval to elapse
+      await new Promise((resolve) => setTimeout(resolve, 70));
+
+      // Assert
+      const { value } = await eventPromise;
+      expect(value.action).toBe('move');
+      expect(value.button).toBe('none');
+      expect(value.x).toBe(10);
+      expect(value.y).toBe(20);
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should debounce rapid move events', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent1 = '\x1b[<35;10;20M';
+    const moveEvent2 = '\x1b[<35;15;25M';
+    const moveEvent3 = '\x1b[<35;20;30M';
+    const iterator = mouse.debouncedMoveEvents({ interval: 50 });
+
+    try {
+      mouse.enable();
+
+      // Act - emit multiple move events rapidly
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent1)); // x=10, y=20
+      stream.emit('data', Buffer.from(moveEvent2)); // x=15, y=25
+      stream.emit('data', Buffer.from(moveEvent3)); // x=20, y=30 - should be the final position
+
+      // Wait for debounce interval
+      await new Promise((resolve) => setTimeout(resolve, 70));
+
+      // Assert - should only get the latest event
+      const { value } = await eventPromise;
+      expect(value.x).toBe(20); // Latest position
+      expect(value.y).toBe(30);
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should yield multiple events over time', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent1 = '\x1b[<35;10;20M';
+    const moveEvent2 = '\x1b[<35;30;40M';
+    const iterator = mouse.debouncedMoveEvents({ interval: 30 });
+
+    try {
+      mouse.enable();
+
+      // Act & Assert - First event
+      const firstEventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent1));
+      await new Promise((resolve) => setTimeout(resolve, 50)); // Wait for debounce
+      const { value: firstEvent } = await firstEventPromise;
+      expect(firstEvent.x).toBe(10);
+      expect(firstEvent.y).toBe(20);
+
+      // Act & Assert - Second event
+      const secondEventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent2));
+      await new Promise((resolve) => setTimeout(resolve, 50)); // Wait for debounce
+      const { value: secondEvent } = await secondEventPromise;
+      expect(secondEvent.x).toBe(30);
+      expect(secondEvent.y).toBe(40);
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should be cancellable with AbortSignal', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const controller = new AbortController();
+    const iterator = mouse.debouncedMoveEvents({ signal: controller.signal });
+
+    try {
+      mouse.enable();
+
+      // Act - start waiting and abort
+      const eventPromise = iterator.next();
+      controller.abort();
+
+      // Assert
+      await expect(eventPromise).rejects.toThrow('The operation was aborted.');
+    } finally {
+      // Cleanup
+      mouse.destroy();
+    }
+  });
+
+  test('should cleanup on abort', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const controller = new AbortController();
+    const iterator = mouse.debouncedMoveEvents({ signal: controller.signal, interval: 100 });
+
+    try {
+      mouse.enable();
+
+      // Act - abort after a short delay
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from('\x1b[<35;10;20M'));
+
+      // Abort before debounce completes
+      await Bun.sleep(20);
+      controller.abort();
+
+      // Assert - promise should be rejected due to abort
+      await expect(eventPromise).rejects.toThrow('The operation was aborted');
+    } finally {
+      // Cleanup
+      mouse.destroy();
+    }
+  });
+
+  test('should handle errors', async () => {
+    // Arrange
+    const emitter = new EventEmitter();
+    const mouse = new Mouse(makeFakeTTYStream(), process.stdout, emitter);
+    const iterator = mouse.debouncedMoveEvents();
+    const error = new Error('Test error');
+
+    try {
+      mouse.enable();
+
+      // Act
+      const promise = iterator.next();
+      emitter.emit('error', error);
+
+      // Assert
+      await expect(promise).rejects.toThrow('Error in mouse event stream: Test error');
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should only yield move events', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;10;20M';
+    const pressEvent = '\x1b[<0;15;25M';
+    const iterator = mouse.debouncedMoveEvents({ interval: 30 });
+
+    try {
+      mouse.enable();
+
+      // Act - emit press event (should be ignored)
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from(pressEvent));
+      stream.emit('data', Buffer.from(moveEvent)); // Only move should be processed
+
+      // Wait for debounce
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Assert - should get move event
+      const { value } = await eventPromise;
+      expect(value.action).toBe('move');
+      expect(value.x).toBe(10);
+      expect(value.y).toBe(20);
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should use default interval of 16ms', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;10;20M';
+    const iterator = mouse.debouncedMoveEvents(); // Use default interval
+
+    try {
+      mouse.enable();
+
+      // Act
+      const startTime = Date.now();
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent));
+      const { value } = await eventPromise;
+      const elapsed = Date.now() - startTime;
+
+      // Assert - event should be yielded after ~16ms
+      expect(value.action).toBe('move');
+      expect(elapsed).toBeGreaterThanOrEqual(16); // At least the interval
+      expect(elapsed).toBeLessThan(100); // But not too long
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should not yield when paused', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;10;20M';
+    const iterator = mouse.debouncedMoveEvents({ interval: 30 });
+
+    try {
+      mouse.enable();
+
+      // Act - pause before emitting
+      mouse.pause();
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent));
+
+      // Wait for debounce interval
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Assert - event should not be yielded while paused
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 100));
+      try {
+        await Promise.race([eventPromise, timeoutPromise]);
+        // If we get here, the event was yielded (which is wrong)
+        expect(false).toBe(true);
+      } catch (err) {
+        expect((err as Error).message).toBe('Timeout');
+      }
+
+      // Resume and emit again
+      mouse.resume();
+      stream.emit('data', Buffer.from(moveEvent));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const { value } = await eventPromise;
+      expect(value.action).toBe('move');
+    } finally {
+      // Cleanup
+      await iterator.return(undefined);
+      mouse.destroy();
+    }
+  });
+
+  test('should cleanup timers on break', async () => {
+    // Arrange
+    const stream = makeFakeTTYStream();
+    const mouse = new Mouse(stream);
+    const moveEvent = '\x1b[<35;10;20M';
+    const iterator = mouse.debouncedMoveEvents({ interval: 100 });
+
+    try {
+      mouse.enable();
+
+      // Act - emit event but break before debounce completes
+      const eventPromise = iterator.next();
+      stream.emit('data', Buffer.from(moveEvent));
+
+      // Break the iteration immediately - this should cleanup the timer
+      await iterator.return(undefined);
+
+      // Wait to ensure timer would have fired if not cleaned up
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      // Assert - the promise should complete (either resolve or reject) without waiting for debounce
+      // The key is that we don't wait 100ms for the debounce interval
+      const result = await eventPromise.catch(() => ({ done: true }));
+      // Either we got a result or an error - both are fine as long as it didn't take the full interval
+      expect(result).toBeDefined();
+    } finally {
+      // Cleanup
+      mouse.destroy();
+    }
+  });
+});

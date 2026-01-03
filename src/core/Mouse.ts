@@ -818,6 +818,185 @@ class Mouse {
   }
 
   /**
+   * Returns an async generator that yields move events at most once per specified interval.
+   *
+   * This method provides debounced move events, reducing event frequency for smooth animations
+   * and performance optimization. Unlike `eventsOf('move')` which yields every move event,
+   * this method waits for a quiet period before emitting, ensuring you only get events at
+   * a controlled rate.
+   *
+   * **Debouncing Behavior:**
+   * - Move events are collected during the debounce interval
+   * - Only the most recent event is yielded after the interval elapses
+   * - If the mouse continues moving, the timer restarts with each new event
+   * - This is ideal for UI updates, animations, and position tracking where you want
+   *   to avoid excessive redraws
+   *
+   * **Cancellation with AbortSignal:** The async generator supports cancellation through
+   * the `signal` option. When the provided AbortSignal is aborted, the generator will stop
+   * immediately and clean up all listeners.
+   *
+   * **Cleanup:** The generator automatically cleans up event listeners and timers when:
+   * - The iteration loop completes (breaks or returns)
+   * - An error is thrown
+   * - The abort signal is triggered
+   *
+   * @param options Configuration for the debounced event stream.
+   * @param options.interval Minimum time in milliseconds between yielded events. Defaults to 16 (~60fps).
+   * @param options.signal An AbortSignal to cancel the async generator and clean up resources.
+   * @yields {MouseEvent} A mouse move event object containing x, y, button, and action properties.
+   * @throws {MouseError} When the abort signal is triggered or a mouse event stream error occurs.
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Track mouse position at ~60fps for smooth cursor following
+   * for await (const event of mouse.debouncedMoveEvents()) {
+   *   console.log(`Mouse at ${event.x}, ${event.y}`);
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Slower update rate (30fps) for less frequent UI updates
+   * for await (const event of mouse.debouncedMoveEvents({ interval: 33 })) {
+   *   updateCursorPosition(event.x, event.y);
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Debounced move events with cancellation
+   * const controller = new AbortController();
+   * setTimeout(() => controller.abort(), 10000); // Stop after 10 seconds
+   *
+   * try {
+   *   for await (const event of mouse.debouncedMoveEvents({ signal: controller.signal })) {
+   *     // Smooth animation update at 60fps
+   *     renderFrame(event.x, event.y);
+   *   }
+   * } catch (err) {
+   *   if (err instanceof MouseError && err.message.includes('aborted')) {
+   *     console.log('Animation stopped');
+   *   }
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Comparing debounced vs raw move events
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Raw: Can fire hundreds of times per second
+   * for await (const event of mouse.eventsOf('move')) {
+   *   console.log('Raw move'); // May print too fast to read
+   *   if (event.x > 50) break;
+   * }
+   *
+   * // Debounced: Controlled rate, easier to process
+   * for await (const event of mouse.debouncedMoveEvents({ interval: 100 })) {
+   *   console.log('Debounced move'); // Prints at most 10 times per second
+   *   if (event.x > 50) break;
+   * }
+   * ```
+   */
+  public async *debouncedMoveEvents({
+    interval = 16,
+    signal,
+  }: {
+    interval?: number;
+    signal?: AbortSignal;
+  } = {}): AsyncGenerator<MouseEvent> {
+    if (signal?.aborted) {
+      throw new MouseError('The operation was aborted.');
+    }
+
+    let latestEvent: MouseEvent | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let resolveNext: ((value: MouseEvent) => void) | null = null;
+    let rejectNext: ((err: Error) => void) | null = null;
+    const errorQueue: Error[] = [];
+
+    const scheduleEvent = (ev: MouseEvent): void => {
+      latestEvent = ev;
+
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+
+      timeoutId = setTimeout(() => {
+        if (latestEvent !== null && resolveNext !== null) {
+          const eventToYield = latestEvent;
+          latestEvent = null;
+          resolveNext(eventToYield);
+          resolveNext = null;
+          rejectNext = null;
+        }
+      }, interval);
+    };
+
+    const errorHandler = (err: Error): void => {
+      const mouseError = new MouseError(`Error in mouse event stream: ${err.message}`, err);
+      if (rejectNext) {
+        rejectNext(mouseError);
+        resolveNext = null;
+        rejectNext = null;
+      } else {
+        errorQueue.push(mouseError);
+      }
+    };
+
+    const abortHandler = (): void => {
+      const err = new MouseError('The operation was aborted.');
+      if (rejectNext) {
+        rejectNext(err);
+        resolveNext = null;
+        rejectNext = null;
+      } else {
+        errorQueue.push(err);
+      }
+    };
+
+    this.emitter.on('move', scheduleEvent);
+    this.emitter.on('error', errorHandler);
+    signal?.addEventListener('abort', abortHandler);
+
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          throw new MouseError('The operation was aborted.');
+        }
+
+        if (errorQueue.length > 0) {
+          throw errorQueue.shift();
+        }
+
+        if (latestEvent !== null && timeoutId === null) {
+          const ev = latestEvent;
+          latestEvent = null;
+          yield ev;
+        } else {
+          // biome-ignore lint/performance/noAwaitInLoops: This is an async generator, await in loop is necessary
+          yield await new Promise<MouseEvent>((resolve, reject) => {
+            resolveNext = resolve;
+            rejectNext = reject;
+          });
+        }
+      }
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+      this.emitter.off('move', scheduleEvent);
+      this.emitter.off('error', errorHandler);
+      signal?.removeEventListener('abort', abortHandler);
+    }
+  }
+
+  /**
    * Returns an async generator that yields all mouse events.
    * Each yielded value is an object containing the event type and the event data.
    * @param options Configuration for the event stream.
