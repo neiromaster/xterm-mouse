@@ -1,106 +1,120 @@
+# CLAUDE.md
 
-Default to using Bun instead of Node.js.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
+## Project Overview
+
+This is a TypeScript library for capturing and parsing mouse events from xterm-compatible terminals in Node.js applications. It provides both event-based (EventEmitter) and streaming (async generators) APIs for handling terminal mouse interactions.
+
+**Key Architecture:**
+
+- **Mouse class** (`src/core/Mouse.ts`): Main class that manages mouse event tracking, handles stdin/stdout streams, and emits events
+- **ANSI Parser** (`src/parser/`): Parses raw ANSI escape sequences into structured mouse events
+  - Supports both SGR (modern) and ESC (legacy) mouse protocols
+  - Implements run-length deduplication to avoid duplicate events
+- **Types** (`src/types/index.ts`): Discriminated union types for mouse events with protocol-specific variants
+
+## Common Commands
+
+### Building
+
+```bash
+bun run build          # Build using tsup (bundles ESM output to dist/)
+```
+
+### Testing
+
+```bash
+bun test               # Run all tests
+bun run coverage       # Run tests with coverage report
+```
+
+### Code Quality
+
+```bash
+bun run lint           # Check code with Biome and dprint
+bun run format         # Format code with Biome and dprint
+bun run typecheck      # Type check with TypeScript
+```
+
+### Development
+
+```bash
+bun run dev:basic         # Run basic example with hot-reload
+bun run dev:streaming     # Run streaming example with hot-reload
+```
+
+## Architecture Details
+
+### Mouse Event Flow
+
+1. `Mouse.enable()` puts stdin in raw mode and sends ANSI codes to enable terminal mouse tracking
+2. Raw stdin data is received and parsed by `parseMouseEvents()` from the ANSI parser
+3. Parsed events are emitted through an EventEmitter or yielded via async generators
+4. `Mouse.disable()` restores terminal state and sends ANSI codes to disable tracking
+
+### Protocol Support
+
+- **SGR Protocol** (`\x1b[<Cb;Cx;CyM` or `\x1b[<Cb;Cx;Cym`): Modern protocol with unlimited coordinates and clear press/release encoding
+- **ESC Protocol** (`\x1b[MCbCxCy`): Legacy protocol with coordinate limits (max 223, sometimes 95)
+
+The parser automatically detects which protocol is being used and returns a discriminated union type (`SGRMouseEvent | ESCMouseEvent`).
+
+### Event Types
+
+- `press`: Mouse button pressed
+- `release`: Mouse button released
+- `click`: Synthesized when press and release occur within `clickDistanceThreshold` (default: 1 cell)
+- `drag`: Mouse moved while button pressed
+- `move`: Mouse moved without button pressed
+- `wheel`: Mouse wheel scrolled
+
+### Resource Management
+
+The library uses **FinalizationRegistry** for automatic cleanup on garbage collection:
+
+- If a Mouse instance is GC'd without explicit cleanup, stdin listeners are removed automatically
+- Despite this safety net, **always call `destroy()`** when done with a Mouse instance for immediate cleanup
+- `pause()`/`resume()` provide fast event throttling without terminal state changes
+
+### Streaming API
+
+The `eventsOf()` and `stream()` methods return async generators with:
+
+- AbortSignal support for cancellation
+- Configurable queue size (`maxQueue`, default: 100, max: 1000)
+- `latestOnly` mode for high-frequency events (keeps only newest event)
+- Automatic listener cleanup on abort, completion, or error
+
+## Code Organization
+
+```
+src/
+├── index.ts           # Public API exports
+├── core/
+│   ├── Mouse.ts       # Main Mouse class implementation
+│   └── Mouse.test.ts  # Mouse class tests
+├── parser/
+│   ├── ansiParser.ts  # ANSI escape sequence parser
+│   ├── ansiParser.test.ts
+│   └── constants.ts   # ANSI codes and regex patterns
+└── types/
+    └── index.ts       # Type definitions (MouseEvent, MouseOptions, etc.)
+```
+
+## Testing Approach
+
+- Uses `bun test` for all testing
+- Tests are co-located with source files (`.test.ts` suffix)
+- The `Mouse` class requires a TTY for integration tests - unit tests mock stdin/stdout
+- Run examples in a real terminal to verify mouse tracking behavior
+
+## Development Notes
+
+- **Bun is the default runtime** (not Node.js)
+- Use `bun <file>` instead of `node <file>`
 - Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Bun automatically loads .env, so don't use dotenv.
-
-## APIs
-
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
-
-## Testing
-
-Use `bun test` to run tests.
-
-```ts#index.test.ts
-import { test, expect } from "bun:test";
-
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
-
-## Frontend
-
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
-
-Server:
-
-```ts#index.ts
-import index from "./index.html"
-
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
-
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
-
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
-
-With the following `frontend.tsx`:
-
-```tsx#frontend.tsx
-import React from "react";
-
-// import .css files directly and it works
-import './index.css';
-
-import { createRoot } from "react-dom/client";
-
-const root = createRoot(document.body);
-
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
+- The library is ESM-only (`"type": "module"` in package.json)
+- Terminal mouse tracking **requires a TTY** - won't work in piped/non-interactive environments
+- Always check `process.stdin.isTTY` before calling `mouse.enable()`
+- The `click` event is synthesized from `press` + `release` events, not directly from the terminal
