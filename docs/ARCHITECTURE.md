@@ -384,8 +384,11 @@ waitForClick(options?: { timeout?: number; signal?: AbortSignal }): Promise<Mous
 // Wait for any mouse event
 waitForInput(options?: { timeout?: number; signal?: AbortSignal }): Promise<MouseEvent>
 
-// Get mouse position
+// Get mouse position (with caching)
 getMousePosition(options?: { timeout?: number; signal?: AbortSignal }): Promise<{ x: number; y: number }>
+
+// Get last known position synchronously
+getLastPosition(): { x: number; y: number } | null
 ```
 
 #### When to Use
@@ -395,6 +398,7 @@ getMousePosition(options?: { timeout?: number; signal?: AbortSignal }): Promise<
 | `waitForClick()`     | "Wait for user to click" interactions                       |
 | `waitForInput()`     | "Press any key to continue" style interactions              |
 | `getMousePosition()` | Prompting user to position cursor                           |
+| `getLastPosition()`  | Getting current position without waiting                    |
 
 #### Comparison with Event-Based and Streaming APIs
 
@@ -587,15 +591,23 @@ public async waitForInput({
 
 #### `getMousePosition({ timeout?, signal? })`
 
-Waits for a mouse move event and returns only the `{ x, y }` coordinates.
+Gets the current mouse position, returning immediately if cached.
 
 **Implementation:**
+
+The method maintains an internal cache (`lastPosition`) that stores the most recent coordinates from move or drag events:
 
 ```typescript
 public async getMousePosition({
   timeout = 30000,
   signal,
 }: { timeout?: number; signal?: AbortSignal } = {}): Promise<{ x: number; y: number }> {
+  // Return cached position immediately if available
+  if (this.lastPosition !== null) {
+    return this.lastPosition;
+  }
+
+  // Otherwise wait for next move event
   return new Promise<{ x: number; y: number }>((resolve, reject) => {
     const moveHandler = (event: MouseEvent): void => {
       cleanup();
@@ -607,14 +619,69 @@ public async getMousePosition({
 }
 ```
 
-**Use Case:** Prompting user to position mouse cursor for UI element placement or selection.
+**Position Caching:**
+
+- Internal `lastPosition` property stores `{ x, y }` from most recent move/drag event
+- Updated automatically in `handleEvent()` when move or drag events occur
+- Cached position returned immediately on subsequent calls
+- No waiting required after first movement
+
+**Use Cases:**
+
+- Prompting user to position mouse cursor for UI element placement
+- Getting mouse position without repeated event handling
+- Combining with `getLastPosition()` for fallback behavior
 
 **Common Features:**
 
 - **Automatic Cleanup:** All listeners removed after promise resolution
 - **Timeout Support:** Reject with `MouseError` if timeout exceeded (default: 30s)
 - **AbortSignal Support:** Cancel pending waits by aborting the signal
+- **Cached Results:** Returns immediately if position is known
 - **Type-Safe:** Full TypeScript type inference for returned events
+
+#### `getLastPosition()`
+
+Gets the last known mouse position synchronously without waiting.
+
+**Implementation:**
+
+```typescript
+public getLastPosition(): { x: number; y: number } | null {
+  return this.lastPosition;
+}
+```
+
+**Returns:**
+
+- `{ x, y }` if mouse has moved since tracking enabled
+- `null` if no movement has occurred yet
+
+**Key Differences:**
+
+| Aspect               | `getLastPosition()`              | `getMousePosition()`             |
+| -------------------- | -------------------------------- | -------------------------------- |
+| Return Type          | `{ x, y } \| null` (sync)        | `Promise<{ x, y }>` (async)      |
+| Waits for Event      | No (instant)                     | Yes (if no cache)                |
+| First Call Behavior  | Returns `null`                   | Waits for first move             |
+| Subsequent Calls     | Returns cached position          | Returns cached position          |
+| Use Context          | Non-async, immediate access      | Async, guaranteed position       |
+
+**Use Cases:**
+
+- Checking if mouse has moved yet (`null` check)
+- Getting position in non-async contexts
+- Immediate position access without Promise overhead
+- UI updates that can't await
+- Combining with async fallback:
+
+```typescript
+// Try sync first, fall back to async
+let pos = mouse.getLastPosition();
+if (!pos) {
+  pos = await mouse.getMousePosition();
+}
+```
 
 ## Design Patterns
 

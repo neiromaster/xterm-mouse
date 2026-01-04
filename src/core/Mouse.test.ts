@@ -3101,19 +3101,23 @@ describe('Mouse.getMousePosition()', () => {
 
     mouse.enable();
 
-    // Act & Assert - First position
+    // Act & Assert - First position (waits for event)
     const position1Promise = mouse.getMousePosition();
     stream.emit('data', Buffer.from(moveEvent1));
     const position1 = await position1Promise;
     expect(position1.x).toBe(10);
     expect(position1.y).toBe(20);
 
-    // Act & Assert - Second position
-    const position2Promise = mouse.getMousePosition();
+    // Act & Assert - Second call returns cached position immediately
+    const position2 = await mouse.getMousePosition();
+    expect(position2.x).toBe(10);
+    expect(position2.y).toBe(20);
+
+    // Act & Assert - Third position (returns cached until new event arrives)
     stream.emit('data', Buffer.from(moveEvent2));
-    const position2 = await position2Promise;
-    expect(position2.x).toBe(30);
-    expect(position2.y).toBe(40);
+    const position3 = await mouse.getMousePosition();
+    expect(position3.x).toBe(30);
+    expect(position3.y).toBe(40);
 
     // Cleanup
     mouse.destroy();
@@ -3205,6 +3209,144 @@ describe('Mouse.getMousePosition()', () => {
 
     // Cleanup
     mouse.destroy();
+  });
+
+  describe('getLastPosition', () => {
+    test('should return null before any mouse movement', () => {
+      // Arrange
+      const stream = makeFakeTTYStream();
+      const mouse = new Mouse(stream);
+
+      mouse.enable();
+
+      // Act & Assert
+      const pos = mouse.getLastPosition();
+      expect(pos).toBeNull();
+
+      // Cleanup
+      mouse.destroy();
+    });
+
+    test('should return cached position after mouse move', async () => {
+      // Arrange
+      const stream = makeFakeTTYStream();
+      const mouse = new Mouse(stream);
+      const moveEvent = '\x1b[<35;15;25M';
+
+      mouse.enable();
+
+      // Act - trigger a move event
+      stream.emit('data', Buffer.from(moveEvent));
+
+      // Wait for event to be processed
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Assert - should return cached position synchronously
+      const pos = mouse.getLastPosition();
+      expect(pos).not.toBeNull();
+      expect(pos?.x).toBe(15);
+      expect(pos?.y).toBe(25);
+
+      // Cleanup
+      mouse.destroy();
+    });
+
+    test('should update position on multiple moves', async () => {
+      // Arrange
+      const stream = makeFakeTTYStream();
+      const mouse = new Mouse(stream);
+      const moveEvent1 = '\x1b[<35;10;20M';
+      const moveEvent2 = '\x1b[<35;50;60M';
+
+      mouse.enable();
+
+      // Act & Assert - First move
+      stream.emit('data', Buffer.from(moveEvent1));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      let pos = mouse.getLastPosition();
+      expect(pos?.x).toBe(10);
+      expect(pos?.y).toBe(20);
+
+      // Act & Assert - Second move updates cache
+      stream.emit('data', Buffer.from(moveEvent2));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      pos = mouse.getLastPosition();
+      expect(pos?.x).toBe(50);
+      expect(pos?.y).toBe(60);
+
+      // Cleanup
+      mouse.destroy();
+    });
+
+    test('should work with drag events', async () => {
+      // Arrange
+      const stream = makeFakeTTYStream();
+      const mouse = new Mouse(stream);
+      const dragEvent = '\x1b[<35;12;22M'; // Button 1 (left) drag
+
+      mouse.enable();
+
+      // Act - trigger a drag event
+      stream.emit('data', Buffer.from(dragEvent));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Assert - drag events should also cache position
+      const pos = mouse.getLastPosition();
+      expect(pos).not.toBeNull();
+      expect(pos?.x).toBe(12);
+      expect(pos?.y).toBe(22);
+
+      // Cleanup
+      mouse.destroy();
+    });
+
+    test('should return immediately without waiting', () => {
+      // Arrange
+      const stream = makeFakeTTYStream();
+      const mouse = new Mouse(stream);
+
+      mouse.enable();
+
+      // Act - should return immediately (synchronous)
+      const start = Date.now();
+      const pos = mouse.getLastPosition();
+      const elapsed = Date.now() - start;
+
+      // Assert - should be instant (< 5ms)
+      expect(elapsed).toBeLessThan(5);
+      expect(pos).toBeNull();
+
+      // Cleanup
+      mouse.destroy();
+    });
+
+    test('should persist across multiple calls', async () => {
+      // Arrange
+      const stream = makeFakeTTYStream();
+      const mouse = new Mouse(stream);
+      const moveEvent = '\x1b[<35;30;40M';
+
+      mouse.enable();
+
+      // Act - trigger move
+      stream.emit('data', Buffer.from(moveEvent));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      // Assert - multiple calls should return same cached position
+      const pos1 = mouse.getLastPosition();
+      const pos2 = mouse.getLastPosition();
+      const pos3 = mouse.getLastPosition();
+
+      expect(pos1).toEqual(pos2);
+      expect(pos2).toEqual(pos3);
+      expect(pos1?.x).toBe(30);
+      expect(pos1?.y).toBe(40);
+
+      // Cleanup
+      mouse.destroy();
+    });
   });
 });
 

@@ -10,7 +10,7 @@ pre-commit:
       stage_fixed: true
     markdownlint:
       glob: "*.md"
-      run: npx markdownlint-cli2 fix {staged_files}
+      run: npx markdownlint-cli2 --fix {staged_files}
       stage_fixed: true
     typecheck:
       run: bun run typecheck

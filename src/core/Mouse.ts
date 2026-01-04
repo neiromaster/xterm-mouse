@@ -80,6 +80,7 @@ class Mouse {
   private previousEncoding: BufferEncoding | null = null;
   private previousRawMode: boolean | null = null;
   private lastPress: MouseEvent | null = null;
+  private lastPosition: { x: number; y: number } | null = null;
   private clickDistanceThreshold: number;
   private cleanupToken: { instance: Mouse } | null = null;
 
@@ -229,6 +230,8 @@ class Mouse {
             }
           }
           this.lastPress = null;
+        } else if (event.action === 'move' || event.action === 'drag') {
+          this.lastPosition = { x: event.x, y: event.y };
         }
       }
     } catch (err) {
@@ -1428,12 +1431,70 @@ class Mouse {
   }
 
   /**
-   * Waits for a mouse move event and returns the current position.
+   * Gets the last known mouse position synchronously.
    *
-   * This is a convenience method for getting the mouse position. It waits for the next
-   * mouse move event and returns the coordinates.
+   * This method immediately returns the last cached mouse position from move or drag events,
+   * without waiting for new events. Returns null if no mouse movement has occurred yet.
    *
-   * **Timeout:** The method will reject with a `MouseError` if the timeout is exceeded.
+   * **No Waiting:** Unlike `getMousePosition()`, this method never waits - it returns
+   * the cached position immediately or null if unavailable.
+   *
+   * **Use Cases:**
+   * - When you need immediate position access without awaiting
+   * - To check if mouse has moved yet (null check)
+   * - For non-async contexts where you can't use await
+   *
+   * @returns The last known position as { x, y }, or null if no movement yet.
+   *
+   * @example
+   * ```ts
+   * const mouse = new Mouse();
+   * mouse.enable();
+   *
+   * // Returns null if mouse hasn't moved yet
+   * const pos = mouse.getLastPosition();
+   * if (pos) {
+   *   console.log(`Mouse at ${pos.x}, ${pos.y}`);
+   * } else {
+   *   console.log('No movement yet');
+   * }
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Use in synchronous context
+   * mouse.on('move', () => {
+   *   const pos = mouse.getLastPosition();
+   *   console.log(`Current: ${pos?.x}, ${pos?.y}`);
+   * });
+   * ```
+   *
+   * @example
+   * ```ts
+   * // Combine with async version for fallback
+   * let pos = mouse.getLastPosition();
+   * if (!pos) {
+   *   pos = await mouse.getMousePosition();
+   * }
+   * ```
+   */
+  public getLastPosition(): { x: number; y: number } | null {
+    return this.lastPosition;
+  }
+
+  /**
+   * Gets the current mouse position, returning immediately if available.
+   *
+   * This method returns the last known mouse position from move or drag events.
+   * If the mouse has moved since tracking was enabled, the position is returned
+   * immediately without waiting. Otherwise, it waits for the next move event.
+   *
+   * **Cached Position:** The method maintains an internal cache of the last position
+   * from move or drag events. This allows for instant position retrieval without
+   * waiting for new events.
+   *
+   * **Timeout:** The method will reject with a `MouseError` if the timeout is exceeded
+   * while waiting for the first move event.
    *
    * **Cancellation:** The method can be cancelled early using an AbortSignal.
    *
@@ -1449,6 +1510,8 @@ class Mouse {
    * mouse.enable();
    *
    * try {
+   *   // If mouse has moved, returns immediately
+   *   // Otherwise waits for first move event
    *   const { x, y } = await mouse.getMousePosition();
    *   console.log(`Mouse is at ${x}, ${y}`);
    * } finally {
@@ -1458,11 +1521,13 @@ class Mouse {
    *
    * @example
    * ```ts
-   * // Prompt user to position mouse
-   * console.log('Move mouse to desired position and press any key...');
-   * await keyboard.waitForKeypress();
-   * const { x, y } = await mouse.getMousePosition();
-   * console.log(`Selected position: ${x}, ${y}`);
+   * // Get position without waiting (after mouse has moved)
+   * mouse.on('move', () => {
+   *   // This will resolve immediately since we have a cached position
+   *   mouse.getMousePosition().then(({ x, y }) => {
+   *     console.log(`Current position: ${x}, ${y}`);
+   *   });
+   * });
    * ```
    *
    * @example
@@ -1480,6 +1545,11 @@ class Mouse {
   } = {}): Promise<{ x: number; y: number }> {
     if (signal?.aborted) {
       throw new MouseError('The operation was aborted.');
+    }
+
+    // If we already have a cached position, return it immediately
+    if (this.lastPosition !== null) {
+      return this.lastPosition;
     }
 
     return new Promise<{ x: number; y: number }>((resolve, reject) => {

@@ -534,7 +534,7 @@ This is useful for "press any key to continue" style interactions, but with mous
 
 #### getMousePosition()
 
-Wait for a mouse move event and return the current position:
+Get the current mouse position, returning immediately if cached:
 
 ```typescript
 import { Mouse } from '@neiropacks/xterm-mouse';
@@ -542,18 +542,63 @@ import { Mouse } from '@neiropacks/xterm-mouse';
 const mouse = new Mouse();
 mouse.enable();
 
-console.log('Move mouse to desired position...');
+// Returns cached position immediately, or waits for first move
 const { x, y } = await mouse.getMousePosition();
-console.log(`Selected position: ${x}, ${y}`);
+console.log(`Mouse at ${x}, ${y}`);
 
 mouse.disable();
 ```
 
-With custom timeout:
+The method maintains an internal cache of the last position from move or drag events:
+
+* Returns cached position **immediately** if available
+* Waits for next move event only if no movement has occurred yet
+* Supports custom timeout and AbortSignal for cancellation
 
 ```typescript
+// With custom timeout
 const { x, y } = await mouse.getMousePosition({ timeout: 5000 });
+
+// With cancellation
+const controller = new AbortController();
+setTimeout(() => controller.abort(), 3000);
+
+try {
+  const { x, y } = await mouse.getMousePosition({ signal: controller.signal });
+} catch (err) {
+  console.log('Cancelled');
+}
 ```
+
+#### getLastPosition()
+
+Get the last known mouse position **synchronously** without waiting:
+
+```typescript
+const mouse = new Mouse();
+mouse.enable();
+
+// Returns null if no movement yet
+const pos = mouse.getLastPosition();
+if (pos) {
+  console.log(`Last position: ${pos.x}, ${pos.y}`);
+} else {
+  console.log('No movement yet');
+}
+
+// Use in event handlers (no await needed)
+mouse.on('move', () => {
+  const pos = mouse.getLastPosition();
+  console.log(`Current: ${pos?.x}, ${pos?.y}`);
+});
+```
+
+**Key differences:**
+
+| Method               | Returns              | Waits for event   | Use case                  |
+|----------------------|----------------------|-------------------|---------------------------|
+| `getLastPosition()`  | `{x, y} \| null`     | No (instant)      | Immediate position access |
+| `getMousePosition()` | `Promise<{x, y}>`    | Yes (if no cache) | Guaranteed position       |
 
 ## Troubleshooting
 
