@@ -12,7 +12,7 @@ Thank you for your interest in contributing to xterm-mouse! This document provid
 ### Cloning the Repository
 
 ```bash
-git clone https://github.com/neiropacks/xterm-mouse.git
+git clone https://github.com/neiromaster/xterm-mouse.git
 cd xterm-mouse
 ```
 
@@ -215,7 +215,7 @@ test("descriptive test name", () => {
 
 ## Getting Help
 
-* **GitHub Issues**: Use [GitHub Issues](https://github.com/neiropacks/xterm-mouse/issues) for bug reports and feature requests.
+* **GitHub Issues**: Use [GitHub Issues](https://github.com/neiromaster/xterm-mouse/issues) for bug reports and feature requests.
 * **Discussions**: Use GitHub Discussions for questions and general topics.
 
 ## Code of Conduct
