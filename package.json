@@ -1,10 +1,10 @@
 {
-  "name": "@neiropacks/xterm-mouse",
+  "name": "@ink-tools/xterm-mouse",
   "version": "0.6.0",
   "description": "A library for working with the mouse in the terminal.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/neiropacks/xterm-mouse.git"
+    "url": "https://github.com/neiromaster/xterm-mouse.git"
   },
   "keywords": [
     "xterm",
